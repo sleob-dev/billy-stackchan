@@ -1,0 +1,14 @@
+[Unit]
+Description=Billy : reconnaissance vocale faster-whisper (127.0.0.1:5003)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/billy/whisper
+EnvironmentFile=/opt/billy/billy.env
+Environment=HF_HOME=/opt/billy/whisper/modeles
+ExecStart=/opt/billy/venv-voix/bin/python serveur.py --modele ${BILLY_WHISPER_MODELE} --langue fr
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+{
+    "production": {
+        "chat_servers": [
+            "ws://127.0.0.1:8000/xiaozhi/v1/?from=mqtt_gateway"
+        ]
+    },
+    "development": {
+        "chat_servers": [
+            "ws://127.0.0.1:8000/xiaozhi/v1/?from=mqtt_gateway"
+        ],
+        "mac_addresss": []
+    },
+    "debug": false,
+    "max_mqtt_payload_size": 8192,
+    "mcp_client": {
+        "capabilities": {},
+        "client_info": {
+            "name": "billy-mqtt-gateway",
+            "version": "1.0.0"
+        }
+    }
+}

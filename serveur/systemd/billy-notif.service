@@ -1,0 +1,14 @@
+[Unit]
+Description=Billy : alertes de notifications (:5004)
+After=network-online.target billy-mqtt.service billy-piper.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/billy/notif
+EnvironmentFile=/opt/billy/billy.env
+ExecStart=/opt/billy/venv-voix/bin/python serveur.py --port 5004 --public http://${BILLY_SERVEUR}:5004 --mode bips
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

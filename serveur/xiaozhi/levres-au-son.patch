@@ -1,0 +1,79 @@
+diff --git a/main/xiaozhi-server/core/handle/sendAudioHandle.py b/main/xiaozhi-server/core/handle/sendAudioHandle.py
+index 998de10..21911a5 100644
+--- a/main/xiaozhi-server/core/handle/sendAudioHandle.py
++++ b/main/xiaozhi-server/core/handle/sendAudioHandle.py
+@@ -14,6 +14,9 @@ from core.utils.audioRateController import AudioRateController
+ TAG = __name__
+ AUDIO_FRAME_DURATION = 60  # 音频帧时长（毫秒），与 Opus 编码 60ms/帧对齐
+ PRE_BUFFER_COUNT = 2  # 首段发送时不入队的帧数，避免流控延迟拉高首帧到达时间
++# Billy : délai entre « tts start » et le premier son, le temps que le robot passe en état
++# « parle » et allume son ampli (sinon il jette les premières trames : 150 ms coupaient parfois le 1er mot).
++DELAI_START_TTS = 0.35
+ 
+ 
+ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text, sentence_id=None):
+@@ -25,6 +28,14 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
+         conn.logger.bind(tag=TAG).info(f"发送第一段语音: {text}")
+         conn.tts.tts_audio_first_sentence = False
+ 
++    # Billy : « tts start » part avec le premier son et non dès la transcription. Le robot
++    # anime sa bouche pendant tout l'état « parle » : sinon, il remue les lèvres pendant
++    # que Claude réfléchit (une à plusieurs secondes avec les outils).
++    if audios and getattr(conn, "tts_start_en_attente", False):
++        conn.tts_start_en_attente = False
++        await send_tts_message(conn, "start")
++        await asyncio.sleep(DELAI_START_TTS)
++
+     if sentenceType == SentenceType.FIRST:
+         # 同一句子的后续消息加入流控队列，其他情况立即发送
+         if (
+@@ -292,6 +303,7 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
+ 
+     # TTS播放结束
+     if state == "stop":
++        conn.tts_start_en_attente = False  # Billy : fin de réponse, on réécoute normalement
+         # 保存当前的 sentence_id，用于后续判断是否是当前轮次
+         current_sentence_id = conn.sentence_id
+         # 播放提示音
+@@ -344,7 +356,10 @@ async def send_stt_message(conn: "ConnectionHandler", text):
+     await conn.websocket.send(
+         json.dumps({"type": "stt", "text": stt_text, "session_id": conn.session_id})
+     )
+-    await send_tts_message(conn, "start")
++    # Billy : « tts start » attend le premier son (voir sendAudioMessage). Pendant ce temps,
++    # startToChat ignore les nouvelles phrases au lieu d'interrompre la réponse.
++    conn.tts_start_en_attente = True
++    conn.tts_start_attente_depuis = time.monotonic()
+     # 发送start消息后客户端状态会处于说话中状态，同步服务端状态
+     conn.client_is_speaking = True
+ 
+diff --git a/main/xiaozhi-server/core/handle/receiveAudioHandle.py b/main/xiaozhi-server/core/handle/receiveAudioHandle.py
+index 2e81a78..7db226e 100644
+--- a/main/xiaozhi-server/core/handle/receiveAudioHandle.py
++++ b/main/xiaozhi-server/core/handle/receiveAudioHandle.py
+@@ -12,6 +12,8 @@ from core.utils.output_counter import check_device_output_limit
+ from core.handle.sendAudioHandle import send_stt_message, SentenceType
+ 
+ TAG = __name__
++# Billy : durée maximale pendant laquelle une nouvelle phrase est ignorée en attendant la réponse.
++ATTENTE_MAX_REPONSE = 15
+ 
+ 
+ async def handleAudioMessage(conn: "ConnectionHandler", pcm_frame):
+@@ -87,6 +89,16 @@ async def startToChat(conn: "ConnectionHandler", text):
+             await max_out_size(conn)
+             return
+ 
++    # Billy : tant que la réponse se prépare (« tts start » en attente du premier son, voir
++    # sendAudioHandle), le robot reste en écoute. Une pause au milieu d'une phrase (VAD à 200 ms)
++    # en faisait une nouvelle question qui interrompait la réponse : elle est ignorée, comme
++    # quand le robot coupait son micro dès la transcription. Au plus 15 s, pour ne jamais rester
++    # sourd si la réponse n'arrive pas.
++    if (getattr(conn, "tts_start_en_attente", False)
++            and time.monotonic() - getattr(conn, "tts_start_attente_depuis", 0) < ATTENTE_MAX_REPONSE):
++        conn.logger.bind(tag=TAG).info(f"Billy prépare sa réponse, phrase ignorée : {actual_text}")
++        return
++
+     # manual 模式下不打断正在播放的内容
+     if conn.client_is_speaking and conn.client_listen_mode != "manual":
+         await handleAbortMessage(conn)

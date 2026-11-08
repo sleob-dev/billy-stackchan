@@ -1,0 +1,70 @@
+diff --git a/main/xiaozhi-server/core/utils/util.py b/main/xiaozhi-server/core/utils/util.py
+index 4db4f38..c8433fd 100644
+--- a/main/xiaozhi-server/core/utils/util.py
++++ b/main/xiaozhi-server/core/utils/util.py
+@@ -17,6 +17,29 @@ from core.utils import p3
+ from pydub import AudioSegment
+ from typing import Callable, Any
+ 
++
++# Billy : la voix Piper arrive à pleine échelle (0 dBFS) ; 4 dB de marge pour que l'ampli et le
++# petit haut-parleur du robot ne craquent pas sur les pointes (remonter le volume de Billy si besoin).
++MARGE_VOIX_DB = -4.0
++
++
++def _mono_16bits(audio: AudioSegment, sample_rate: int) -> AudioSegment:
++    """Billy : mono, 16 bits, au débit voulu, rééchantillonné par soxr (filtré), avec MARGE_VOIX_DB.
++
++    pydub.set_frame_rate (audioop.ratecv) interpole sans filtre anti-repliement : les aigus de la
++    voix Piper (22 050 Hz, davantage avec la « hauteur ») se repliaient en souffle grésillant,
++    17 dB sous la voix avec Siwis. Avec soxr, le bruit ajouté devient inaudible.
++    """
++    audio = audio.set_channels(1).set_sample_width(2)
++    pcm = np.frombuffer(audio.raw_data, dtype=np.int16).astype(np.float32)
++    if audio.frame_rate != sample_rate:
++        import soxr
++
++        pcm = soxr.resample(pcm, audio.frame_rate, sample_rate, quality="HQ")
++    pcm = np.clip(pcm * 10 ** (MARGE_VOIX_DB / 20), -32768, 32767)
++    return AudioSegment(pcm.astype(np.int16).tobytes(), frame_rate=sample_rate, sample_width=2,
++                        channels=1)
++
+ TAG = __name__
+ 
+ 
+@@ -293,7 +316,7 @@ def _audio_to_data_stream_inner(
+     audio = AudioSegment.from_file(
+         audio_file_path, format=file_type, parameters=["-nostdin"]
+     )
+-    audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
++    audio = _mono_16bits(audio, sample_rate)
+     pcm_to_data_stream(audio.raw_data, is_opus, callback, sample_rate, opus_encoder)
+ 
+ 
+@@ -335,7 +358,7 @@ async def audio_to_data(
+             )
+ 
+         # 转换为单声道/16kHz采样率/16位小端编码（确保与编码器匹配）
+-        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
++        audio = _mono_16bits(audio, 16000)
+ 
+         # 获取原始PCM数据（16位小端）
+         raw_data = audio.raw_data
+@@ -395,7 +418,7 @@ def audio_bytes_to_data_stream(
+             audio = AudioSegment.from_file(
+                 BytesIO(audio_bytes), format=file_type, parameters=["-nostdin"]
+             )
+-        audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
++        audio = _mono_16bits(audio, sample_rate)
+         raw_data = audio.raw_data
+         pcm_to_data_stream(raw_data, is_opus, callback, sample_rate, opus_encoder)
+ 
+@@ -488,7 +511,7 @@ def audio_file_to_wav_bytes(audio_file_path, sample_rate=16000):
+         audio = AudioSegment.from_file(
+             audio_file_path, format=file_type, parameters=["-nostdin"]
+         )
+-    audio = audio.set_channels(1).set_frame_rate(sample_rate).set_sample_width(2)
++    audio = _mono_16bits(audio, sample_rate)
+     buffer = BytesIO()
+     audio.export(buffer, format="wav")
+     return buffer.getvalue()

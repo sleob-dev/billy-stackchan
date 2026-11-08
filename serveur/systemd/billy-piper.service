@@ -1,0 +1,12 @@
+[Unit]
+Description=Billy : synthèse vocale Piper (127.0.0.1:5002)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/billy/piper
+ExecStart=/opt/billy/venv-voix/bin/python serveur.py --host 127.0.0.1 --port 5002
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

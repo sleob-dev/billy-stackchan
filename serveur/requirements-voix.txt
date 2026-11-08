@@ -1,0 +1,5 @@
+# venv-voix : Piper (synthèse) et faster-whisper (reconnaissance)
+piper-tts==1.8.0
+faster-whisper==1.2.1
+# faster-whisper 1.2.1 passe metadata_errors à av.open(), retiré des versions récentes de PyAV
+av==15.1.0

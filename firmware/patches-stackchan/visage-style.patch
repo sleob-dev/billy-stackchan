@@ -1,0 +1,39 @@
+--- a/firmware/main/hal/hal_mcp.cpp
++++ b/firmware/main/hal/hal_mcp.cpp
+@@ -9,6 +9,7 @@
+ #include <stackchan/stackchan.h>
+ #include <apps/common/common.h>
+ #include <stackchan/billy/moves.h>  // Billy : self.robot.play_moves
++#include <stackchan/avatar/skins/billy/billy.h>  // Billy : self.billy.set_style
+ 
+ using namespace stackchan;
+ 
+@@ -111,6 +112,28 @@
+             return billy::play_moves(moves, append);
+         });
+ 
++    // Billy : style du visage choisi à distance (télécommande billy-commande)
++    mclog::tagInfo(_tag, "add billy.set_style tool");
++    mcp_server.AddTool(
++        "self.billy.set_style",
++        "Set Billy's face style: \"A\" (visor), \"D\" (kawaii), \"E\" (kawaii visor) or \"auto\" (theme of the "
++        "day, the default). Kept across reboots. Returns {\"style\": style shown, \"choix\": \"auto\" or the "
++        "forced style}; the face changes within a frame.",
++        PropertyList({Property("style", kPropertyTypeString)}),
++        [](const PropertyList& properties) -> ToolResult {
++            auto style = properties["style"].value<std::string>();
++            if (!avatar::BillyAvatar::setStyle(style)) {
++                return std::unexpected(std::string("style must be A, D, E or auto"));
++            }
++            return avatar::BillyAvatar::styleJson();
++        });
++    mcp_server.AddTool("self.billy.get_style",
++                       "Get Billy's face style. Returns {\"style\": style shown (A, D or E), \"choix\": \"auto\" "
++                       "(theme of the day) or the forced style}.",
++                       PropertyList(), [](const PropertyList&) -> ToolResult {
++                           return avatar::BillyAvatar::styleJson();
++                       });
++
+     mclog::tagInfo(_tag, "add robot.create_reminder tool");
+     mcp_server.AddTool("self.robot.create_reminder",
+                        "Create a reminder. Duration is in seconds. Message is what to say when time is up. Set repeat "

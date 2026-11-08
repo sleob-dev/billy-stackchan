@@ -1,0 +1,16 @@
+diff --git a/main/xiaozhi-server/core/utils/voiceprint_provider.py b/main/xiaozhi-server/core/utils/voiceprint_provider.py
+index ee4f06c..4b7912d 100644
+--- a/main/xiaozhi-server/core/utils/voiceprint_provider.py
++++ b/main/xiaozhi-server/core/utils/voiceprint_provider.py
+@@ -180,6 +180,11 @@ class VoiceprintProvider:
+                             result_name = self.speaker_map[speaker_id]["name"]
+                             logger.bind(tag=TAG).info(f"声纹识别成功: {result_name} (相似度: {score:.3f})")
+                             return result_name
++                        elif speaker_id:
++                            # Billy : son service d'empreintes renvoie directement le nom des
++                            # personnes apprises à l'oral, absentes de la liste de la config.
++                            logger.bind(tag=TAG).info(f"声纹识别成功: {speaker_id} (相似度: {score:.3f})")
++                            return speaker_id
+                         else:
+                             logger.bind(tag=TAG).warning(f"未识别的说话人ID: {speaker_id}")
+                             return "未知说话人"

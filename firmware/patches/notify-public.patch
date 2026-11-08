@@ -1,0 +1,34 @@
+diff --git a/main/application.h b/main/application.h
+index 68f01d1..f290d80 100644
+--- a/main/application.h
++++ b/main/application.h
+@@ -81,6 +81,8 @@ public:
+      * Schedule a callback to be executed in the main task
+      */
+     void Schedule(std::function<void()>&& callback);
++    // Billy : joue un son notify (URL Ogg Opus) demandé par le robot lui-même, texte en bulle
++    void PlayNotify(const std::string& audio_url, const std::string& text);
+ 
+     /**
+      * Alert with status, message, emotion and optional sound
+diff --git a/main/application.cc b/main/application.cc
+index 50096d8..59fa2ac 100644
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -1081,6 +1081,16 @@ void Application::ConfigureWakeWordForListening() {
+ #endif
+ }
+ 
++void Application::PlayNotify(const std::string& audio_url, const std::string& text) {
++    std::vector<NotifySubtitle> subtitles;
++    if (!text.empty()) {
++        subtitles.push_back({.start_ms = 0, .text = text});
++    }
++    Schedule([this, url = audio_url, subtitles = std::move(subtitles)]() mutable {
++        StartNotification(std::move(url), std::move(subtitles));
++    });
++}
++
+ void Application::StartNotification(std::string audio_url, std::vector<NotifySubtitle> subtitles) {
+     if (GetDeviceState() != kDeviceStateIdle || notify_player_.IsBusy()) {
+         ESP_LOGW(TAG, "Ignoring notify message while device is busy");

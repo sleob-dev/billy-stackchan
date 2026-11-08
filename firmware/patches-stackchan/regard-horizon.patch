@@ -1,0 +1,50 @@
+diff --git a/firmware/main/stackchan/modifiers/idle_motion.h b/firmware/main/stackchan/modifiers/idle_motion.h
+index e756fa6..c41d8b1 100644
+--- a/firmware/main/stackchan/modifiers/idle_motion.h
++++ b/firmware/main/stackchan/modifiers/idle_motion.h
+@@ -13,6 +13,10 @@
+ 
+ namespace stackchan {
+ 
++// Billy : au repos, la tête ne monte pas au-delà d'environ 25° (pitch en dixièmes de degré, limites du servo
++// 30 à 870). Avant, elle allait jusqu'à 60° et la caméra de « Il te regarde » ne voyait que le plafond.
++constexpr int kBillyPitchMaxRepos = 250;
++
+ /**
+  * @brief
+  *
+@@ -76,7 +80,7 @@ private:
+         if (action < 50) {
+             // 【动作 1：随意环视】使用归一化坐标 (-1.0 ~ 1.0)
+             float target_x = Random::getInstance().getFloat(-0.4f, 0.4f);   // 左右看
+-            float target_y = Random::getInstance().getFloat(-0.95f, 0.2f);  // 上下看
++            float target_y = Random::getInstance().getFloat(-0.95f, -0.45f);  // 上下看 (Billy : pitch 51 à 261, au lieu de 534)
+             int speed      = Random::getInstance().getInt(150, 300);
+ 
+             // mclog::info("action 1: look at normalized ({}, {}) in speed {}", target_x, target_y, speed);
+@@ -89,7 +93,7 @@ private:
+             int diff_pitch = Random::getInstance().getInt(-80, 80);
+ 
+             int target_yaw   = uitk::clamp(current.x + diff_yaw, -800, 800);
+-            int target_pitch = uitk::clamp(current.y + diff_pitch, 0, 600);
++            int target_pitch = uitk::clamp(current.y + diff_pitch, 0, kBillyPitchMaxRepos);
+             int speed        = Random::getInstance().getInt(100, 250);
+ 
+             // mclog::info("action 2: small move to ({}, {}) in speed {}", target_yaw, target_pitch, speed);
+@@ -97,14 +101,14 @@ private:
+         } else if (action < 90) {
+             // 【动作 3：快速撇一眼】速度快，跨度中等
+             int target_yaw   = Random::getInstance().getInt(-500, 500);
+-            int target_pitch = Random::getInstance().getInt(100, 400);
++            int target_pitch = Random::getInstance().getInt(80, kBillyPitchMaxRepos);
+             int speed        = Random::getInstance().getInt(250, 400);
+ 
+             // mclog::info("action 3: quick glance to ({}, {}) in speed {}", target_yaw, target_pitch, speed);
+             motion.moveWithSpeed(target_yaw, target_pitch, speed);
+         } else {
+             // 【动作 4：yaw 回正】
+-            int target_pitch = Random::getInstance().getInt(50, 400);
++            int target_pitch = Random::getInstance().getInt(50, kBillyPitchMaxRepos);
+             int speed        = Random::getInstance().getInt(100, 300);
+ 
+             // mclog::info("action 4: go home to (0, {}) in speed {}", target_pitch, speed);

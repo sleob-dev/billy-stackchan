@@ -1,0 +1,19 @@
+# Firmware maison de Billy (StackChan 1.6.2) : surcouche lue par le CMakeLists du firmware après
+# sdkconfig.defaults. Tout le reste reste identique à M5Stack (partitions 16 Mo, langue, mot d'éveil
+# « Hi StackChan », etc.).
+#
+# Adresse du serveur : rien n'est compilé ici. Deux façons de brancher le robot sur votre serveur :
+#  - sans recompiler, écrire la clé NVS wifi:ota_url (outils/nvs_ota_url.py, voir le README) ;
+#  - ou lancer construire.sh avec BILLY_OTA_URL=http://<votre-serveur>:8003/xiaozhi/ota/, qui ajoute
+#    CONFIG_OTA_URL à cette surcouche au moment de la compilation.
+# La clé NVS, si elle existe, reste prioritaire (Ota::GetCheckVersionUrl).
+
+# Le robot envoie son mot d'éveil au serveur (message « listen detect »), qui répond aussitôt
+# « Oui <prénom> ? » (serveur/xiaozhi/reponse-reveil.patch). L'audio du mot et la pile de son
+# encodage sont en PSRAM ; la RAM interne n'y perd qu'environ 350 octets.
+CONFIG_SEND_WAKE_WORD_DATA=y
+
+# Bluetooth coupé pour rendre environ 23 Ko de RAM interne (contrôleur BLE en IRAM). Il ne servait
+# qu'à l'appli StackChan World (Avatar, Dance, réglage du Wi-Fi), non utilisée ici.
+# patches-stackchan/sans-bluetooth.patch remplace alors le module bleprph par des fonctions vides.
+CONFIG_BT_ENABLED=n

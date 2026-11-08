@@ -1,0 +1,14 @@
+[Unit]
+Description=Billy : serveur XiaoZhi (xiaozhi-esp32-server)
+After=network-online.target billy-whisper.service billy-piper.service
+Wants=network-online.target billy-whisper.service billy-piper.service
+
+[Service]
+WorkingDirectory=/opt/billy/xiaozhi-esp32-server/main/xiaozhi-server
+EnvironmentFile=/opt/billy/billy.env
+ExecStart=/opt/billy/venv-xiaozhi/bin/python app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

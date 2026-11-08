@@ -1,0 +1,12 @@
+[Unit]
+Description=Billy : empreintes vocales, qui parle ? (127.0.0.1:8005)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/billy/voix
+ExecStart=/opt/billy/venv-xiaozhi/bin/python serveur.py --port 8005
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

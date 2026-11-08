@@ -1,0 +1,52 @@
+diff --git a/main/audio/audio_service.cc b/main/audio/audio_service.cc
+index 7f7582b..5b0b3d3 100644
+--- a/main/audio/audio_service.cc
++++ b/main/audio/audio_service.cc
+@@ -1,3 +1,4 @@
++#include <algorithm>
+ #include "audio_service.h"
+ #include <esp_log.h>
+ #include <cstring>
+@@ -167,7 +168,7 @@ void AudioService::Start() {
+             audio_service->OpusCodecTask();
+             vTaskDelete(NULL);
+         },
+-        "opus_codec", 2048 * 12, this, 2, &opus_codec_task_handle_);
++        "opus_codec", 2048 * 12, this, 4, &opus_codec_task_handle_);  // Billy : 4 et non 2, au-dessus du dessin du visage (LVGL, 3)
+ }
+ 
+ void AudioService::Stop() {
+@@ -324,13 +325,33 @@ void AudioService::AudioInputTask() {
+ }
+ 
+ void AudioService::AudioOutputTask() {
++    // Billy : compte les fois où le haut-parleur attend un paquet déjà reçu mais pas encore décodé
++    // (le processeur manque au décodage ; une attente du réseau n'est pas comptée).
++    uint32_t famines = 0;
++    int64_t famine_pire_ms = 0, dernier_bilan = 0;
+     while (true) {
+         std::unique_lock<std::mutex> lock(audio_queue_mutex_);
++        const bool attend_decodage = audio_playback_queue_.empty() && (!audio_decode_queue_.empty() || decode_in_flight_);
++        const int64_t debut_attente = esp_timer_get_time();
+         audio_queue_cv_.wait(
+             lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_.load(); });
+         if (service_stopped_.load()) {
+             break;
+         }
++        if (attend_decodage) {
++            const int64_t ms = (esp_timer_get_time() - debut_attente) / 1000;
++            if (ms >= 30) {
++                ++famines;
++                famine_pire_ms = std::max(famine_pire_ms, ms);
++            }
++        }
++        if (famines > 0 && esp_timer_get_time() - dernier_bilan > 5000000) {
++            dernier_bilan = esp_timer_get_time();
++            ESP_LOGW(TAG, "Billy : son en attente du décodage %lu fois (pire %lld ms)", (unsigned long)famines,
++                     famine_pire_ms);
++            famines = 0;
++            famine_pire_ms = 0;
++        }
+ 
+         auto task = std::move(audio_playback_queue_.front());
+         audio_playback_queue_.pop_front();

@@ -1,0 +1,30 @@
+# Réglages et secrets locaux
+.env
+*.env
+!.env.example
+serveur/xiaozhi/personnalite.md
+commande.env
+
+# Environnements Python et caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Voix Piper, modèles Whisper, sons générés
+serveur/piper/voix/
+*.onnx
+*.onnx.json
+audio/
+modeles/
+
+# Binaires et sauvegardes de flash : jamais dans le dépôt
+*.bin
+firmware/sortie/
+*.elf
+*.map
+
+# Données apprises en service (prononciations, voix, état)
+serveur/piper/prononciations.txt
+empreintes.json
+serveur/commande/silence

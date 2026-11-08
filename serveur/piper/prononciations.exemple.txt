@@ -1,0 +1,4 @@
+# Prononciations de Billy : une ligne « écrit = dit » (majuscules ignorées).
+# Relu automatiquement ; Billy en ajoute quand on lui dit « prononce X comme Y ».
+StackChan = stack-tchane
+Wi-Fi = oui-fi

@@ -1,0 +1,156 @@
+# Réglages du serveur XiaoZhi de Billy, modèle à assembler par construire_config.py, qui remplace
+# les variables entre ${ et } par celles du fichier .env et la ligne PERSONNALITE par personnalite.md.
+# Le résultat va dans main/xiaozhi-server/data/.config.yaml : il complète le config.yaml d'origine
+# (fusion clé par clé). Ne déployez pas ce modèle tel quel.
+
+server:
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  # Adresses envoyées au robot par l'interface OTA
+  websocket: ws://${BILLY_SERVEUR}:8000/xiaozhi/v1/
+  vision_explain: http://${BILLY_SERVEUR}:8003/mcp/vision/explain
+  timezone_offset: ${BILLY_FUSEAU}
+  auth:
+    enabled: false
+  # Passerelle MQTT (billy-mqtt) : elle garde le robot joignable entre deux conversations, pour
+  # les alertes. Sans signature : réseau local seulement. Retirer la ligne renvoie le robot au
+  # WebSocket direct (plus d'alertes hors conversation).
+  mqtt_gateway: ${BILLY_SERVEUR}:1883
+
+# Après 45 s de silence, la conversation se ferme et le robot redevient joignable pour les alertes
+close_connection_no_voice_time: 45
+enable_greeting: true
+# Réglage ajouté par masquer-texte.patch : le robot parle sans afficher ses phrases à l'écran
+afficher_texte: false
+
+exit_commands:
+  - "au revoir ${BILLY_NOM}"
+  - "c'est bon ${BILLY_NOM}"
+
+# Mots d'éveil reconnus côté serveur. « Hi StackChan » est le mot d'éveil du firmware ; le
+# robot envoie aussi « billy » quand on lui tape sur la tête (patches-stackchan/visage-billy.patch).
+wakeup_words:
+  - "hi stackchan"
+  - "hi stack chan"
+  - "histackchan"
+  - "billy"
+  - "salut ${BILLY_NOM}"
+
+# Réponse immédiate au mot d'éveil, dite par Piper et gardée en cache (reponse-reveil.patch)
+reponse_reveil: "${BILLY_REPONSE_REVEIL}"
+
+mcp_endpoint: ""
+
+context_providers: []
+
+# La personnalité vient de personnalite.md (copiez personnalite.exemple.md) : construire_config.py
+# remplace la ligne PERSONNALITE ci-dessous par son contenu.
+prompt: |
+  PERSONNALITE
+
+prompt_template: data/billy-prompt.txt
+
+system_error_response: "Oups, j'ai un petit souci. On réessaie dans un instant ?"
+
+end_prompt:
+  enable: true
+  prompt: |
+    Termine la conversation par une phrase courte et chaleureuse, en français.
+
+selected_module:
+  VLLM: ClaudeVLLM
+  VAD: SileroVAD
+  ASR: WhisperLocal
+  # ClaudeLLM, OpenAILLM ou OllamaLLM (définis plus bas), ou tout LLM du config.yaml d'origine
+  LLM: ${BILLY_LLM}
+  TTS: PiperTTS
+  Memory: mem_local_short
+  Intent: function_call
+
+Intent:
+  function_call:
+    type: function_call
+    functions:
+      - handle_exit_intent
+      # Outils maison d'exemple (billy_maison.py) et danse (billy_danse.py)
+      - maison_meteo
+      - maison_prononciation
+      - maison_voix
+      - maison_danse
+
+# Qui parle : service billy-voix (local). La liste « speakers » doit avoir au moins une entrée
+# pour que le serveur active la reconnaissance ; les autres prénoms s'apprennent à l'oral
+# (voix-apprises.patch). La clé n'est pas un secret : le service n'écoute que 127.0.0.1.
+voiceprint:
+  url: http://127.0.0.1:8005/voiceprint/health?key=billy-local
+  speakers:
+    - "${BILLY_PRENOM},${BILLY_PRENOM},la personne qui utilise le robot"
+  similarity_threshold: 0.5
+
+Memory:
+  mem_local_short:
+    type: mem_local_short
+    llm: ${BILLY_LLM}
+
+ASR:
+  WhisperLocal:
+    # Service faster-whisper local (billy-whisper), au format de l'API OpenAI ; la clé n'est pas
+    # vérifiée par le service local.
+    type: openai
+    api_key: local
+    base_url: http://127.0.0.1:5003/v1/audio/transcriptions
+    model_name: ${BILLY_WHISPER_MODELE}
+    output_dir: tmp/
+
+# Analyse des photos de la caméra (vision_claude.py, copié en core/providers/vllm/claude.py).
+# Clé : variable d'environnement ANTHROPIC_API_KEY du service.
+VLLM:
+  ClaudeVLLM:
+    type: claude
+    model_name: ${BILLY_CLAUDE_MODELE}
+    max_tokens: 400
+
+LLM:
+  # Claude (claude.py, copié en core/providers/llm/claude/claude.py).
+  # Clé : variable d'environnement ANTHROPIC_API_KEY du service.
+  ClaudeLLM:
+    type: claude
+    model_name: ${BILLY_CLAUDE_MODELE}
+    max_tokens: 1024
+    effort: low
+    # Recherche web (outil d'Anthropic, payant à la recherche) : 0 pour la couper
+    web_max_uses: ${BILLY_RECHERCHE_WEB}
+    web_location:
+      city: ${BILLY_METEO_NOM}
+      country: ${BILLY_PAYS}
+      timezone: ${BILLY_FUSEAU_NOM}
+  # OpenAI ou tout service compatible (Mistral, DeepSeek, LM Studio…) : url et modèle à adapter
+  OpenAILLM:
+    type: openai
+    model_name: ${BILLY_OPENAI_MODELE}
+    url: ${BILLY_OPENAI_URL}
+    api_key: ${OPENAI_API_KEY}
+  # Ollama local : le modèle doit être téléchargé avant (ollama pull)
+  OllamaLLM:
+    type: ollama
+    model_name: ${BILLY_OLLAMA_MODELE}
+    base_url: ${BILLY_OLLAMA_URL}
+
+TTS:
+  PiperTTS:
+    # Serveur Piper (billy-piper), qui renvoie un WAV. Réglages essayés dans le simulateur.
+    type: custom
+    method: POST
+    url: http://127.0.0.1:5002/tts
+    params:
+      text: "{prompt_text}"
+      voice: ${BILLY_PIPER_VOIX}
+      speed: ${BILLY_PIPER_VITESSE}
+      noise: ${BILLY_PIPER_EXPRESSIVITE}
+      noise_w: ${BILLY_PIPER_RYTHME}
+      pitch: ${BILLY_PIPER_HAUTEUR}
+    headers: {}
+    format: wav
+    output_dir: tmp/
+    language: français

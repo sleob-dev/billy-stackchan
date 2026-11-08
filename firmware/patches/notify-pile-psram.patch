@@ -1,0 +1,61 @@
+diff --git a/main/notify/notify_player.cc b/main/notify/notify_player.cc
+index 312bc96..5a385c0 100644
+--- a/main/notify/notify_player.cc
++++ b/main/notify/notify_player.cc
+@@ -62,17 +62,25 @@ bool NotifyPlayer::Start(std::string audio_url, std::vector<NotifySubtitle> subt
+         completion_reported_ = false;
+     }
+ 
+-    BaseType_t created = xTaskCreate(WorkerEntry, "notify_http", kNotifyTaskStackSize, this,
+-                                     kNotifyTaskPriority, &task_handle_);
+-    if (created != pdPASS) {
+-        ESP_LOGE(TAG, "Failed to create notification HTTP task");
+-        std::lock_guard<std::mutex> lock(mutex_);
+-        active_ = false;
+-        worker_running_ = false;
+-        cancelled_ = true;
+-        task_handle_ = nullptr;
+-        return false;
++    // Billy : la tâche est créée une seule fois, pile et TCB en PSRAM, puis réveillée à chaque
++    // alerte. xTaskCreate en RAM interne échouait au moment de l'alerte (RAM interne trop juste).
++    // Elle ne fait que du réseau, du démultiplexage Ogg et la file audio : jamais d'écriture en
++    // flash ni en NVS, ce qu'une pile en PSRAM interdit.
++    if (task_handle_ == nullptr) {
++        BaseType_t created = xTaskCreatePinnedToCoreWithCaps(
++            WorkerEntry, "notify_http", kNotifyTaskStackSize, this, kNotifyTaskPriority,
++            &task_handle_, tskNO_AFFINITY, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
++        if (created != pdPASS) {
++            ESP_LOGE(TAG, "Failed to create notification HTTP task");
++            std::lock_guard<std::mutex> lock(mutex_);
++            active_ = false;
++            worker_running_ = false;
++            cancelled_ = true;
++            task_handle_ = nullptr;
++            return false;
++        }
+     }
++    xTaskNotifyGive(task_handle_);
+     return true;
+ }
+ 
+@@ -167,8 +175,10 @@ void NotifyPlayer::OnPlaybackDrained() {
+ 
+ void NotifyPlayer::WorkerEntry(void* arg) {
+     auto* player = static_cast<NotifyPlayer*>(arg);
+-    player->WorkerTask();
+-    vTaskDelete(nullptr);
++    for (;;) {
++        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
++        player->WorkerTask();
++    }
+ }
+ 
+ void NotifyPlayer::WorkerTask() {
+@@ -270,7 +280,6 @@ void NotifyPlayer::WorkerTask() {
+     {
+         std::lock_guard<std::mutex> lock(mutex_);
+         worker_running_ = false;
+-        task_handle_ = nullptr;
+         if (!cancelled_ && active_ && playback_id == playback_id_) {
+             if (!success) {
+                 callback = CompleteLocked(completed_playback_id);

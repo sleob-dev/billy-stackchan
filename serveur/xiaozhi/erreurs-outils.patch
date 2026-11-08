@@ -1,0 +1,19 @@
+diff --git a/main/xiaozhi-server/core/providers/tools/device_mcp/mcp_executor.py b/main/xiaozhi-server/core/providers/tools/device_mcp/mcp_executor.py
+index 4047657..f8e059b 100644
+--- a/main/xiaozhi-server/core/providers/tools/device_mcp/mcp_executor.py
++++ b/main/xiaozhi-server/core/providers/tools/device_mcp/mcp_executor.py
+@@ -63,7 +63,13 @@ class DeviceMCPExecutor(ToolExecutor):
+         except ValueError as e:
+             return ActionResponse(action=Action.NOTFOUND, response=str(e))
+         except Exception as e:
+-            return ActionResponse(action=Action.ERROR, response=str(e))
++            # Billy : l'erreur brute (« MCP错误: … ») était lue telle quelle par la synthèse vocale ;
++            # on la confie au LLM, qui dit simplement que ça n'a pas marché.
++            return ActionResponse(
++                action=Action.REQLLM,
++                result=f"Échec de l'outil {tool_name} ({e}). Dis en une phrase que ça n'a pas marché, "
++                       "sans lire ce message.",
++            )
+ 
+     def get_tools(self) -> Dict[str, ToolDefinition]:
+         """获取所有设备端MCP工具"""

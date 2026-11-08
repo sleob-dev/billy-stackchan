@@ -1,0 +1,70 @@
+diff --git a/firmware/main/hal/board/stackchan_display.cc b/firmware/main/hal/board/stackchan_display.cc
+index b43b893..026ac7a 100644
+--- a/firmware/main/hal/board/stackchan_display.cc
++++ b/firmware/main/hal/board/stackchan_display.cc
+@@ -15,8 +15,11 @@
+ #include <lvgl.h>
+ #include <lvgl_theme.h>
+ #include <stackchan/stackchan.h>
++#include <stackchan/avatar/skins/billy/billy.h>  // Billy : visage maison
+ #include <assets/lang_config.h>
+ #include <hal/hal.h>
++#include <application.h>  // Billy : réveil par une tape sur la tête
++#include <stackchan/billy/presence.h>  // Billy : « Il te regarde »
+ 
+ using namespace stackchan;
+ using namespace stackchan::avatar;
+@@ -251,7 +254,7 @@ void StackChanAvatarDisplay::SetupUI()
+ 
+     ESP_LOGI(TAG, "Creating Stack-chan Avatar...");
+ 
+-    auto avatar = std::make_unique<DefaultAvatar>();
++    auto avatar = std::make_unique<BillyAvatar>();  // Billy : visage maison à la place de DefaultAvatar
+     avatar->init(lv_screen_active());
+     avatar->getPanel()->onClick().connect([]() {
+         static uint32_t last_toggle_tick = 0;
+@@ -270,6 +273,32 @@ void StackChanAvatarDisplay::SetupUI()
+     stackchan.addModifier(std::make_unique<BreathModifier>());
+     blink_modifier_id_ = stackchan.addModifier(std::make_unique<BlinkModifier>());
+     stackchan.addModifier(std::make_unique<HeadPetModifier>());
++    stackchan.addModifier(std::make_unique<PresenceModifier>());  // Billy : « Il te regarde »
++
++    // Billy : une petite tape sur la tête (appui de moins de 0,6 s, sans glisser) le réveille comme
++    // « Hi StackChan » ; le serveur reçoit « billy » et répond « Oui <prénom> ? ». La caresse (glisser)
++    // garde ses cœurs (HeadPetModifier). Seulement au repos, pour ne pas couper une réponse.
++    GetHAL().onHeadPetGesture.connect([](HeadPetGesture gesture) {
++        static uint32_t press_tick = 0;
++        static bool swiped         = false;
++        const uint32_t now         = GetHAL().millis();
++        if (gesture == HeadPetGesture::Press) {
++            press_tick = now;
++            swiped     = false;
++        } else if (gesture == HeadPetGesture::SwipeForward || gesture == HeadPetGesture::SwipeBackward) {
++            swiped = true;
++        } else if (gesture == HeadPetGesture::Release) {
++            const bool tap = !swiped && press_tick != 0 && now - press_tick < 600;
++            press_tick     = 0;
++            if (tap && hal_bridge::is_xiaozhi_ready()) {
++                auto& app = Application::GetInstance();
++                if (app.GetDeviceState() == kDeviceStateIdle) {
++                    ESP_LOGI(TAG, "Tape sur la tête : réveil");
++                    app.WakeWordInvoke("billy");
++                }
++            }
++        }
++    });
+     stackchan.addModifier(std::make_unique<ImuEventModifier>());
+ 
+     preview_image_ = lv_image_create(lv_screen_active());
+@@ -371,6 +400,11 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
+         avatar.setEmotion(Emotion::Neutral);
+     }
+ 
++    // Billy : la skin maison dessine toutes les émotions du serveur (rire, larmes, lunettes…)
++    if (auto* billy = dynamic_cast<BillyAvatar*>(&avatar)) {
++        billy->setExpressionName(emotion);
++    }
++
+     // Resync blink modifier base eye weights
+     auto blink_modifier = static_cast<BlinkModifier*>(stackchan.getModifier(blink_modifier_id_));
+     if (blink_modifier) {

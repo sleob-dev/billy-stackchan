@@ -1,0 +1,37 @@
+diff --git a/firmware/main/hal/hal_mcp.cpp b/firmware/main/hal/hal_mcp.cpp
+index 0d73851..3e15b5a 100644
+--- a/firmware/main/hal/hal_mcp.cpp
++++ b/firmware/main/hal/hal_mcp.cpp
+@@ -8,6 +8,7 @@
+ #include <mcp_server.h>
+ #include <stackchan/stackchan.h>
+ #include <apps/common/common.h>
++#include <stackchan/billy/moves.h>  // Billy : self.robot.play_moves
+ 
+ using namespace stackchan;
+ 
+@@ -92,6 +93,24 @@ void Hal::xiaozhi_mcp_init()
+             return true;
+         });
+ 
++    // Billy : suite de pas jouée par le robot avec sa propre horloge (danses envoyées par le serveur)
++    mclog::tagInfo(_tag, "add robot.play_moves tool");
++    mcp_server.AddTool(
++        "self.robot.play_moves",
++        "Play a timed sequence of head moves and LED colors with the robot's own clock (for dances). "
++        "moves: JSON array of steps, each {\"t_ms\": time from start in ms (0-600000), \"yaw\": -128..128, "
++        "\"pitch\": 0..90, \"speed\": 100..1000 (default 300), \"r\", \"g\", \"b\": 0..168}; yaw, pitch and "
++        "r/g/b are each optional. At most 300 steps. An empty array [] stops the current sequence. "
++        "append=true adds the steps to the sequence already playing (same time origin), to send a long "
++        "dance in several messages. Returns immediately.",
++        PropertyList({Property("moves", kPropertyTypeString), Property("append", kPropertyTypeBoolean, false)}),
++        [](const PropertyList& properties) -> ReturnValue {
++            auto moves  = properties["moves"].value<std::string>();
++            bool append = properties["append"].value<bool>();
++            LvglLockGuard lock;  // StackChan motion update is under the lvgl lock
++            return billy::play_moves(moves, append);
++        });
++
+     mclog::tagInfo(_tag, "add robot.create_reminder tool");
+     mcp_server.AddTool("self.robot.create_reminder",
+                        "Create a reminder. Duration is in seconds. Message is what to say when time is up. Set repeat "

@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulateur StackChan</title>
+<style>
+  :root {
+    --bg: #f3f4f7;
+    --panel: #ffffff;
+    --text: #1d2026;
+    --muted: #6a707c;
+    --line: #e1e4ea;
+    --accent: #ff6b8b;
+    --accent-text: #ffffff;
+    --chip: #f0f2f6;
+    --stage-top: #dfe6f1;
+    --stage-bottom: #b9c4d6;
+    /* coque du robot */
+    --shell: #eceef2;
+    --shell-top: #f8f9fb;
+    --shell-side: #cfd3da;
+    --shell-dark: #a7acb6;
+    --bezel: #24262b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171c;
+      --panel: #1d2027;
+      --text: #e9ebf0;
+      --muted: #9aa1ad;
+      --line: #2d313a;
+      --chip: #262a33;
+      --stage-top: #2a3140;
+      --stage-bottom: #12151c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15171c; --panel: #1d2027; --text: #e9ebf0; --muted: #9aa1ad;
+    --line: #2d313a; --chip: #262a33; --stage-top: #2a3140; --stage-bottom: #12151c;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI", system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    overflow: hidden;
+  }
+
+  /* ---------- Scène 3D ---------- */
+  .stage {
+    position: relative;
+    overflow: hidden;
+    perspective: 1600px;
+    background: radial-gradient(ellipse at 50% 35%, var(--stage-top), var(--stage-bottom));
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    transition: background .8s;
+  }
+  .stage.dragging { cursor: grabbing; }
+  .stage.night { background: radial-gradient(ellipse at 50% 35%, #1b2130, #05070b); }
+  .hint {
+    position: absolute; left: 16px; bottom: 12px; right: 16px;
+    color: var(--muted); font-size: 12px; pointer-events: none;
+  }
+  .stage.night .hint { color: #6d7484; }
+  .rig { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+  .node, .box { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+  .face {
+    position: absolute;
+    backface-visibility: hidden;
+    background: var(--shell);
+    transition: background .8s;
+  }
+  .rig.night { --shell: #5d6169; --shell-top: #6a6e77; --shell-side: #4a4e55; --shell-dark: #3b3e44; }
+  .face.top { background: var(--shell-top); }
+  .face.left, .face.right { background: var(--shell-side); }
+  .face.bottom, .face.back { background: var(--shell-dark); }
+
+  .head .face.front {
+    background: var(--bezel);
+    border-radius: 6px;
+  }
+  .head .face.front canvas {
+    position: absolute; left: 10px; top: 26px;
+    width: 320px; height: 240px;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .cam { position: absolute; top: 9px; left: 50%; width: 9px; height: 9px; margin-left: -4px;
+         border-radius: 50%; background: radial-gradient(circle at 35% 35%, #4b5568, #0b0d12); }
+  .prox { position: absolute; top: 11px; left: calc(50% + 22px); width: 12px; height: 5px;
+          border-radius: 3px; background: #0d0f14; }
+
+  .head .face.top { display: flex; flex-direction: column; padding: 14px; gap: 6px; }
+  .zone {
+    flex: 1; border-radius: 8px; cursor: pointer;
+    background: rgba(0,0,0,.05);
+    border: 1px dashed rgba(0,0,0,.12);
+    transition: background .2s;
+  }
+  .zone:hover { background: rgba(255,107,139,.25); }
+  .zone.hit { background: rgba(255,107,139,.6); }
+
+  .base .face.front { border-radius: 0 0 14px 14px; }
+  .leds {
+    position: absolute; left: 30px; right: 30px; top: 22px; bottom: 26px;
+    border-radius: 12px; background: rgba(20,22,28,.18);
+    display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; justify-items: center;
+  }
+  .led { width: 15px; height: 15px; border-radius: 50%; background: #444851; }
+  .shadow {
+    position: absolute; width: 420px; height: 300px; left: -210px; top: -150px;
+    background: radial-gradient(ellipse, rgba(0,0,0,.35), rgba(0,0,0,0) 65%);
+  }
+
+  /* ---------- Panneau ---------- */
+  .panel {
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
+    padding: 14px 16px 24px;
+  }
+  .panel header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .panel h1 { font-size: 18px; margin: 0; }
+  .state { font-size: 12px; color: var(--muted); }
+  section { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+  button, select, input[type="text"] {
+    font: inherit; color: var(--text);
+    background: var(--chip); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  input[type="text"] { flex: 1; min-width: 0; }
+  select { flex: 1; min-width: 0; }
+  label.slider { display: grid; grid-template-columns: 92px 1fr 48px; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+  label.slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-right: 10px; }
+  input[type="checkbox"] { accent-color: var(--accent); }
+  input[type="color"] { width: 38px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: none; }
+  .log {
+    font: 12px/1.45 Consolas, ui-monospace, monospace;
+    background: var(--chip); border-radius: 8px; padding: 8px;
+    height: 150px; overflow-y: auto; white-space: pre-wrap; color: var(--muted);
+  }
+  .small { font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 58vh 1fr; }
+    .panel { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="rig" id="rig"></div>
+  <div class="hint">Glisser : tourner la vue · double-clic : recentrer · ← ↑ → ↓ : servos · 1 à 6 : expressions · clic sur l'écran ou le dessus de la tête : interagir</div>
+</div>
+
+<aside class="panel">
+  <header>
+    <h1>StackChan</h1>
+    <span class="state" id="stateVal">démarrage…</span>
+  </header>
+  <p class="small" style="margin:0 0 10px">Simulation du modèle M5Stack K151 (CoreS3, écran 320×240, servos 360° / 90°, 12 LEDs).</p>
+
+  <section>
+    <h2>Alimentation</h2>
+    <div class="row">
+      <button id="btnPower">Éteindre</button>
+      <button id="btnReboot">Redémarrer</button>
+      <button id="btnDemo" class="primary">Démo</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Expression</h2>
+    <div class="row" id="exprRow">
+      <button data-expr="neutral">Neutre</button>
+      <button data-expr="happy">Content</button>
+      <button data-expr="sleepy">Endormi</button>
+      <button data-expr="doubt">Perplexe</button>
+      <button data-expr="sad">Triste</button>
+      <button data-expr="angry">Fâché</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Servos</h2>
+    <label class="slider">Rotation X <input type="range" id="pan" min="-180" max="180" value="0"><output id="panVal">0°</output></label>
+    <label class="slider">Inclinaison Y <input type="range" id="tilt" min="5" max="85" value="45"><output id="tiltVal">45°</output></label>
+    <label class="slider">Vitesse <input type="range" id="speed" min="30" max="400" value="180"><output id="speedVal">180°/s</output></label>
+    <div class="row">
+      <button id="btnCenter">Centrer</button>
+      <button id="btnServoTest">Test des servos</button>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="chkFollow"> Suivre la souris</label>
+      <label class="check"><input type="checkbox" id="chkAlive" checked> Mode vivant</label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Parole</h2>
+    <div class="row">
+      <input type="text" id="sayInput" placeholder="Fais-lui dire quelque chose…" value="Bonjour, j'ai hâte d'arriver !">
+      <button id="btnSay" class="primary">Parler</button>
+    </div>
+    <div class="row">
+      <button data-say="Bonjour !">Bonjour</button>
+      <button data-say="Je m'appelle Stack-chan.">Mon nom</button>
+      <button data-say="Quel temps fait-il aujourd'hui ?">Météo ?</button>
+      <button data-say="J'ai un peu faim de watts.">Batterie</button>
+    </div>
+    <div class="row"><select id="voiceSel" aria-label="Voix"></select></div>
+    <div id="piperOpts" hidden>
+      <label class="slider">Vitesse <input type="range" id="vSpeed" min="50" max="200" value="100"><output id="vSpeedVal"></output></label>
+      <label class="slider">Expressivité <input type="range" id="vNoise" min="0" max="100" value="67"><output id="vNoiseVal"></output></label>
+      <label class="slider">Rythme <input type="range" id="vNoiseW" min="40" max="120" value="80"><output id="vNoiseWVal"></output></label>
+      <label class="slider">Hauteur <input type="range" id="pitch" min="80" max="150" value="100"><output id="pitchVal"></output></label>
+      <div class="row">
+        <button id="btnVoiceTest">Écouter</button>
+        <button id="btnVoiceReset">Par défaut</button>
+      </div>
+    </div>
+    <div class="row"><label class="check"><input type="checkbox" id="chkSpeaker"> Son du petit haut-parleur (1 W)</label></div>
+    <h2 style="margin-top:6px">Langage robot</h2>
+    <div class="row">
+      <button data-beep="happy">Content</button>
+      <button data-beep="surprised">Surpris</button>
+      <button data-beep="sad">Triste</button>
+      <button data-beep="angry">Grognon</button>
+      <button data-beep="chatty">Bavard</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>LEDs (12 RGB)</h2>
+    <div class="row">
+      <select id="ledMode" aria-label="Mode des LEDs">
+        <option value="off">Éteintes</option>
+        <option value="fixe">Couleur fixe</option>
+        <option value="respiration">Respiration</option>
+        <option value="arcenciel">Arc-en-ciel</option>
+        <option value="voix">Suit la voix</option>
+      </select>
+      <input type="color" id="ledColor" value="#4fc3f7" aria-label="Couleur des LEDs">
+    </div>
+    <label class="slider">Luminosité <input type="range" id="ledBright" min="0" max="100" value="80"><output id="ledBrightVal">80 %</output></label>
+  </section>
+
+  <section>
+    <h2>Capteurs</h2>
+    <div class="row">
+      <button data-touch="avant">Tête : avant</button>
+      <button data-touch="milieu">Tête : milieu</button>
+      <button data-touch="arriere">Tête : arrière</button>
+      <button id="btnPet">Caresse</button>
+    </div>
+    <div class="row">
+      <button id="btnShake">Secouer (IMU)</button>
+      <button id="btnHand">Approcher la main</button>
+      <label class="check"><input type="checkbox" id="chkLight" checked> Lumière</label>
+    </div>
+    <div class="row">
+      <button data-notif="minuteur:00FF40">Notif. minuteur</button>
+      <button data-notif="sonnette:FF6A2A">Notif. sonnette</button>
+      <button data-notif="minuteur:00FF40:0.3">Notif. discrète</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Journal</h2>
+    <div class="log" id="log"></div>
+  </section>
+</aside>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Utilitaires ----------
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const prefs = (() => {
+    try { return JSON.parse(localStorage.getItem('stackchan-prefs')) || {}; } catch { return {}; }
+  })();
+  const savePrefs = () => {
+    try {
+      localStorage.setItem('stackchan-prefs', JSON.stringify({
+        voice: S.voiceName, ledMode: S.led.mode, ledColor: S.led.color,
+        ledBright: S.led.bright, speed: S.speed, alive: S.alive,
+        pitch: S.pitch, smallSpeaker: S.smallSpeaker, piper: S.piper,
+      }));
+    } catch { /* stockage indisponible : pas grave */ }
+  };
+
+  const logEl = $('log');
+  function log(msg) {
+    const d = new Date();
+    const hh = d.toTimeString().slice(0, 8);
+    logEl.textContent = `${hh}  ${msg}\n` + logEl.textContent.split('\n').slice(0, 80).join('\n');
+  }
+
+  // ---------- État ----------
+  const S = {
+    power: true,
+    screen: 'boot',          // boot | start | face
+    screenSince: 0,
+    baseExpr: 'neutral', expr: 'neutral', exprUntil: 0,
+    gazeX: 0, gazeY: 0, gazeTX: 0, gazeTY: 0,
+    blinkStart: -1,
+    mouth: 0, mouthTarget: 0, nextMouth: 0,
+    speaking: false,
+    balloon: null, balloonSince: 0, balloonUntil: 0,
+    pan: { cur: 0, target: 0 },
+    tilt: { cur: 45, target: 45 },
+    speed: prefs.speed || 180,
+    follow: false,
+    alive: prefs.alive !== undefined ? prefs.alive : true,
+    busy: false,
+    shakeUntil: 0,
+    lightsOn: true,
+    cam: { x: -12, y: -16 },
+    voiceName: prefs.voice || '',
+    pitch: prefs.pitch || 1,
+    piper: { speed: 1, noise: 0.667, noiseW: 0.8, ...prefs.piper },   // réglages Piper (valeurs du modèle par défaut)
+    smallSpeaker: !!prefs.smallSpeaker,
+    audioLipSync: false,
+    led: {
+      mode: prefs.ledMode || 'respiration',
+      color: prefs.ledColor || '#4fc3f7',
+      bright: prefs.ledBright !== undefined ? prefs.ledBright : 0.8,
+      flash: null, flashUntil: 0,
+    },
+    next: { blink: 0, saccade: 0, head: 0 },
+  };
+
+  // ---------- Construction du robot en 3D (CSS) ----------
+  function box(cls, w, h, d) {
+    const el = document.createElement('div');
+    el.className = 'box ' + cls;
+    const defs = {
+      front: [w, h, `translateZ(${d / 2}px)`],
+      back: [w, h, `rotateY(180deg) translateZ(${d / 2}px)`],
+      right: [d, h, `rotateY(90deg) translateZ(${w / 2}px)`],
+      left: [d, h, `rotateY(-90deg) translateZ(${w / 2}px)`],
+      top: [w, d, `rotateX(90deg) translateZ(${h / 2}px)`],
+      bottom: [w, d, `rotateX(-90deg) translateZ(${h / 2}px)`],
+    };
+    el.faces = {};
+    for (const [name, [fw, fh, tf]] of Object.entries(defs)) {
+      const f = document.createElement('div');
+      f.className = 'face ' + name;
+      Object.assign(f.style, { width: fw + 'px', height: fh + 'px', left: -fw / 2 + 'px', top: -fh / 2 + 'px', transform: tf });
+      el.appendChild(f);
+      el.faces[name] = f;
+    }
+    return el;
+  }
+
+  const rig = $('rig');
+  const stage = $('stage');
+
+  // Ombre au sol (y = 220)
+  const shadow = document.createElement('div');
+  shadow.className = 'shadow';
+  shadow.style.transform = 'translateY(222px) rotateX(90deg)';
+  rig.appendChild(shadow);
+
+  // Socle : 240 × 110 × 200, de y = 110 à y = 220
+  const base = box('base', 240, 110, 200);
+  base.style.transform = 'translateY(165px)';
+  rig.appendChild(base);
+  const ledsEl = document.createElement('div');
+  ledsEl.className = 'leds';
+  const ledEls = [];
+  for (let i = 0; i < 12; i++) {
+    const l = document.createElement('div');
+    l.className = 'led';
+    ledsEl.appendChild(l);
+    ledEls.push(l);
+  }
+  base.faces.front.appendChild(ledsEl);
+
+  // Servo X (rotation) posé sur le socle
+  const panNode = document.createElement('div');
+  panNode.className = 'node';
+  rig.appendChild(panNode);
+  const neck = box('neck', 70, 26, 70);
+  neck.style.transform = 'translateY(-13px)';
+  panNode.appendChild(neck);
+
+  // Servo Y (inclinaison) en bas de la tête
+  const tiltNode = document.createElement('div');
+  tiltNode.className = 'node';
+  panNode.appendChild(tiltNode);
+  const head = box('head', 340, 280, 230);
+  head.style.transform = 'translateY(-140px)';
+  tiltNode.appendChild(head);
+
+  const front = head.faces.front;
+  front.insertAdjacentHTML('beforeend', '<div class="cam"></div><div class="prox"></div>');
+  const canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 480;
+  front.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  // Dessus de la tête : 3 zones tactiles (le haut de la face = l'arrière de la tête)
+  const zones = {};
+  for (const [key, label] of [['arriere', 'arrière'], ['milieu', 'milieu'], ['avant', 'avant']]) {
+    const z = document.createElement('div');
+    z.className = 'zone';
+    z.title = 'Zone tactile ' + label;
+    z.addEventListener('click', (e) => { if (!dragMoved) touch(key); e.stopPropagation(); });
+    head.faces.top.appendChild(z);
+    zones[key] = z;
+  }
+
+  function layout() {
+    const r = stage.getBoundingClientRect();
+    const s = clamp(Math.min(r.width / 560, r.height / 600), 0.35, 1.4);
+    rig.style.transform = `translateY(-12px) scale(${s}) rotateX(${S.cam.x}deg) rotateY(${S.cam.y}deg)`;
+  }
+  window.addEventListener('resize', layout);
+  layout();
+
+  // ---------- Visage (façon m5stack-avatar, 320 × 240) ----------
+  function eyeOpenness(t) {
+    if (S.blinkStart < 0) return 1;
+    const p = (t - S.blinkStart) / 0.16;
+    if (p >= 1) { S.blinkStart = -1; return 1; }
+    return Math.abs(1 - 2 * p);
+  }
+
+  function poly(points) {
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (const p of points.slice(1)) ctx.lineTo(p[0], p[1]);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function line(x1, y1, x2, y2, w = 3) {
+    ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+
+  function drawEye(x, y, left, open) {
+    const r = 8, e = S.expr;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+    if (e === 'happy') {
+      ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(x, y + 5, 10, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+      return;
+    }
+    if (e === 'sleepy') open = Math.min(open, 0.15);
+    if (open < 0.18) ctx.fillRect(x - r, y - 1, r * 2, 3);
+    else { ctx.beginPath(); ctx.ellipse(x, y, r, r * open, 0, 0, Math.PI * 2); ctx.fill(); }
+
+    ctx.fillStyle = '#000';
+    const a = r + 1;
+    if (e === 'angry') {
+      poly(left ? [[x - a, y - a], [x + a, y - a], [x + a, y + 1]] : [[x + a, y - a], [x - a, y - a], [x - a, y + 1]]);
+      left ? line(x - 13, y - 17, x + 13, y - 9) : line(x + 13, y - 17, x - 13, y - 9);
+    } else if (e === 'sad') {
+      poly(left ? [[x + a, y - a], [x - a, y - a], [x - a, y + 1]] : [[x - a, y - a], [x + a, y - a], [x + a, y + 1]]);
+      left ? line(x - 13, y - 9, x + 13, y - 17) : line(x + 13, y - 9, x - 13, y - 17);
+    } else if (e === 'doubt') {
+      if (!left) { ctx.fillRect(x - a, y - a, a * 2, r * 0.9); line(x - 12, y - 19, x + 12, y - 15); }
+      else line(x - 11, y - 14, x + 11, y - 14);
+    }
+  }
+
+  function drawMouth(x, y) {
+    const o = S.mouth, e = S.expr;
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
+    if (!S.speaking && o < 0.08) {
+      if (e === 'happy') { ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(x, y - 16, 22, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke(); return; }
+      if (e === 'sad') { ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(x, y + 20, 22, Math.PI * 1.22, Math.PI * 1.78); ctx.stroke(); return; }
+    }
+    let w = 90 - 40 * o;
+    const h = 4 + 56 * o;
+    if (e === 'doubt') { w *= 0.55; x += 14; }
+    if (e === 'sleepy') w *= 0.6;
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
+  }
+
+  function drawBalloon(t) {
+    const text = S.balloon;
+    ctx.font = '600 15px "Segoe UI", sans-serif';
+    const tw = ctx.measureText(text).width;
+    const bw = Math.min(tw + 24, 210), bh = 32, x0 = 312 - bw, y0 = 8;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.roundRect(x0, y0, bw, bh, 12); ctx.fill();
+    poly([[x0 + 18, y0 + bh - 1], [x0 + 6, y0 + bh + 12], [x0 + 34, y0 + bh - 1]]);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0 + 10, y0, bw - 20, bh); ctx.clip();
+    ctx.fillStyle = '#111'; ctx.textBaseline = 'middle';
+    if (tw <= bw - 24) ctx.fillText(text, x0 + 12, y0 + bh / 2 + 1);
+    else {
+      const span = tw + 50;
+      const off = Math.max(0, (t - S.balloonSince - 0.8) * 55) % span;
+      ctx.fillText(text, x0 + 12 - off, y0 + bh / 2 + 1);
+      ctx.fillText(text, x0 + 12 - off + span, y0 + bh / 2 + 1);
+    }
+    ctx.restore();
+  }
+
+  function drawScreen(t) {
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 320, 240);
+    if (!S.power) return;
+
+    if (S.screen === 'boot') {
+      const p = clamp((t - S.screenSince) / 1.6, 0, 1);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.font = '700 30px "Segoe UI", sans-serif';
+      ctx.fillText('StackChan', 160, 112);
+      ctx.fillStyle = '#333'; ctx.fillRect(90, 140, 140, 6);
+      ctx.fillStyle = '#ff6b8b'; ctx.fillRect(90, 140, 140 * p, 6);
+      ctx.textAlign = 'start';
+      return;
+    }
+    if (S.screen === 'start') {
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.font = '700 24px "Segoe UI", sans-serif';
+      ctx.fillText('Bienvenue !', 160, 70);
+      ctx.font = '15px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#bbb';
+      ctx.fillText('Pose-moi sur une surface stable', 160, 102);
+      ctx.fillText('puis appuie sur Start', 160, 122);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+      ctx.fillStyle = `rgba(255,107,139,${0.75 + 0.25 * pulse})`;
+      ctx.beginPath(); ctx.roundRect(100, 150, 120, 44, 22); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '700 20px "Segoe UI", sans-serif';
+      ctx.fillText('Start', 160, 179);
+      ctx.textAlign = 'start';
+      return;
+    }
+
+    const period = S.expr === 'sleepy' ? 6 : 4;
+    const breath = Math.sin(t * 2 * Math.PI / period) * 2.5;
+    const gx = S.gazeX * 9, gy = S.gazeY * 7;
+    const open = eyeOpenness(t);
+    drawEye(90 + gx, 93 + gy + breath, true, open);
+    drawEye(230 + gx, 96 + gy + breath, false, open);
+    drawMouth(163 + gx * 0.5, 148 + gy * 0.5 + breath);
+
+    if (S.expr === 'happy') {
+      ctx.fillStyle = 'rgba(255,120,150,.55)';
+      ctx.beginPath(); ctx.ellipse(66 + gx, 120 + gy + breath, 13, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(254 + gx, 123 + gy + breath, 13, 6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    if (S.expr === 'sleepy' && !S.balloon) {
+      ctx.fillStyle = '#fff'; ctx.font = '700 16px "Segoe UI", sans-serif';
+      for (let i = 0; i < 3; i++) {
+        const k = ((t * 0.4) + i / 3) % 1;
+        ctx.globalAlpha = 1 - k;
+        ctx.font = `700 ${12 + i * 5}px "Segoe UI", sans-serif`;
+        ctx.fillText('z', 250 + k * 30 + i * 8, 60 - k * 40 - i * 6);
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (S.balloon) drawBalloon(t);
+  }
+
+  // ---------- Actions ----------
+  const EXPR_FR = { neutral: 'neutre', happy: 'content', sleepy: 'endormi', doubt: 'perplexe', sad: 'triste', angry: 'fâché' };
+
+  function setExpr(e, ms) {
+    if (!EXPR_FR[e]) return;
+    if (ms) { S.expr = e; S.exprUntil = performance.now() / 1000 + ms / 1000; }
+    else { S.baseExpr = e; S.expr = e; S.exprUntil = 0; log(`expression → ${EXPR_FR[e]}`); }
+    for (const b of document.querySelectorAll('#exprRow button')) b.classList.toggle('on', b.dataset.expr === S.baseExpr);
+  }
+
+  function look(pan, tilt) {
+    S.pan.target = clamp(pan, -180, 180);
+    S.tilt.target = clamp(tilt, 5, 85);
+  }
+
+  const servoWaiters = [];
+  function waitServos() {
+    return new Promise((resolve) => servoWaiters.push(resolve));
+  }
+  async function moveTo(pan, tilt) { look(pan, tilt); await waitServos(); }
+
+  function flashLeds(color, ms, blink = false) {
+    Object.assign(S.led, { flash: color, flashBlink: blink, flashUntil: performance.now() / 1000 + ms / 1000 });
+  }
+
+  // --- Voix ---
+  // Deux sources : le serveur Piper local (la voix prévue pour le vrai robot) et les voix du navigateur.
+  // Servi par le serveur Piper : même origine. Ouvert en fichier local : on vise le serveur directement.
+  const PIPER_URL = location.protocol.startsWith('http') ? '' : 'http://127.0.0.1:5002';
+  let webVoices = [], piperVoices = [];
+  const voiceSel = $('voiceSel');
+
+  function renderVoices() {
+    let html = '';
+    if (piperVoices.length) {
+      html += '<optgroup label="Piper (voix prévue pour le robot)">';
+      for (const v of piperVoices) {
+        if (!v.speakers.length) html += `<option value="piper:${v.id}:">${v.name}</option>`;
+        v.speakers.forEach((sp, i) => { html += `<option value="piper:${v.id}:${i}">${v.name} – ${sp[0].toUpperCase() + sp.slice(1)}</option>`; });
+      }
+      html += '</optgroup>';
+    }
+    html += '<optgroup label="Robot"><option value="beeps:">Langage robot (bips)</option></optgroup>';
+    if (webVoices.length) {
+      html += '<optgroup label="Navigateur">' + webVoices.map((v) => `<option value="web:${v.name}">${v.name}</option>`).join('') + '</optgroup>';
+    }
+    voiceSel.innerHTML = html || '<option value="">Aucune voix : bouche animée seulement</option>';
+    const values = [...voiceSel.options].map((o) => o.value);
+    voiceSel.value = values.includes(S.voiceName) ? S.voiceName : values[0];
+    $('piperOpts').hidden = !voiceSel.value.startsWith('piper:');
+  }
+
+  function loadWebVoices() {
+    if (!('speechSynthesis' in window)) return;
+    webVoices = speechSynthesis.getVoices().filter((v) => v.lang && v.lang.toLowerCase().startsWith('fr'));
+    const pref = ['Denise', 'Vivienne', 'Henri', 'Google', 'Hortense', 'Julie'];
+    webVoices.sort((a, b) => {
+      const ia = pref.findIndex((p) => a.name.includes(p)), ib = pref.findIndex((p) => b.name.includes(p));
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    renderVoices();
+  }
+
+  let piperRetry = null;
+  async function loadPiperVoices(delay = 0) {
+    clearTimeout(piperRetry);
+    if (delay) { piperRetry = setTimeout(() => loadPiperVoices(), delay); return; }
+    try {
+      const res = await fetch(PIPER_URL + '/voices', { signal: AbortSignal.timeout(1500) });
+      piperVoices = await res.json();
+      renderVoices();
+      log(`Piper connecté (${piperVoices.length} voix)`);
+    } catch {
+      loadPiperVoices(10000);   // serveur pas encore lancé : on réessaie plus tard
+    }
+  }
+
+  if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', loadWebVoices);
+  loadWebVoices();
+  renderVoices();
+  loadPiperVoices();
+  voiceSel.addEventListener('change', () => {
+    S.voiceName = voiceSel.value;
+    $('piperOpts').hidden = !S.voiceName.startsWith('piper:');
+    savePrefs();
+  });
+
+  // Lecture audio (Piper et bips), avec analyse du volume pour la bouche
+  let audioCtx = null, analyser = null, playing = null;
+  const levels = new Float32Array(1024);
+  function audio() {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function stopAudio() {
+    if (!playing) return;
+    playing.stop();
+    playing = null;
+  }
+  function connectOut(ac, node) {
+    if (S.smallSpeaker) {        // imite le haut-parleur 1 W : pas de graves, médiums en avant
+      const hp = Object.assign(ac.createBiquadFilter(), { type: 'highpass' }); hp.frequency.value = 380;
+      const pk = Object.assign(ac.createBiquadFilter(), { type: 'peaking' }); pk.frequency.value = 2200; pk.gain.value = 5;
+      const lp = Object.assign(ac.createBiquadFilter(), { type: 'lowpass' }); lp.frequency.value = 5500;
+      node.connect(hp); hp.connect(pk); pk.connect(lp);
+      node = lp;
+    }
+    node.connect(analyser);
+  }
+  async function speakPiper(text, value, token) {
+    const [, id, spk] = value.split(':');
+    const res = await fetch(PIPER_URL + '/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text, voice: id, speaker: spk === '' ? null : +spk,
+        speed: S.piper.speed, noise: S.piper.noise, noise_w: S.piper.noiseW,
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const ac = audio();
+    const buffer = await ac.decodeAudioData(await res.arrayBuffer());
+    if (token !== speechToken) return;
+    const src = ac.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = S.pitch;
+    connectOut(ac, src);
+    const me = { stop: () => { try { src.stop(); } catch { /* déjà arrêtée */ } } };
+    playing = me;
+    S.speaking = true; S.audioLipSync = true;
+    await new Promise((r) => { src.onended = r; src.start(); });
+    if (playing === me) { playing = null; S.audioLipSync = false; }
+  }
+
+  // --- Langage robot : bips et sifflements façon R2-D2 ---
+  // Sur le vrai robot, la même chose se fait avec M5.Speaker.tone(fréquence, durée).
+  const MOODS = {
+    happy:     { fr: 'content',  expr: 'happy',   freq: [900, 2200], shapes: ['up', 'up', 'warble', 'beep'], count: [4, 7] },
+    surprised: { fr: 'surpris',  expr: 'doubt',   freq: [600, 1400], shapes: ['up'], count: [1, 2], long: true },
+    sad:       { fr: 'triste',   expr: 'sad',     freq: [350, 900],  shapes: ['down'], count: [2, 3], long: true, wave: 'sine' },
+    angry:     { fr: 'grognon',  expr: 'angry',   freq: [140, 420],  shapes: ['buzz', 'beep', 'down'], count: [3, 5], wave: 'sawtooth' },
+    chatty:    { fr: 'bavard',   expr: null,      freq: [500, 2800], shapes: ['beep', 'up', 'down', 'warble', 'beep'], count: [6, 12] },
+  };
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  function beepPhrase(ac, out, mood, n) {
+    let t = ac.currentTime + 0.03;
+    const start = t;
+    for (let i = 0; i < n; i++) {
+      const shape = pick(mood.shapes);
+      const dur = mood.long ? rand(0.25, 0.45) : rand(0.05, 0.16);
+      const f = rand(...mood.freq);
+      const osc = ac.createOscillator();
+      osc.type = mood.wave || (Math.random() < 0.3 ? 'square' : 'sine');
+      const peak = osc.type === 'sine' ? 0.35 : 0.1;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.008);
+      g.gain.setValueAtTime(peak, t + dur - 0.015);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      osc.frequency.setValueAtTime(f, t);
+      if (shape === 'up') osc.frequency.exponentialRampToValueAtTime(Math.min(4200, f * rand(1.6, 2.6)), t + dur);
+      if (shape === 'down') osc.frequency.exponentialRampToValueAtTime(f * rand(0.4, 0.65), t + dur);
+      if (shape === 'warble' || shape === 'buzz') {      // modulation rapide de la fréquence
+        const lfo = ac.createOscillator(), depth = ac.createGain();
+        lfo.frequency.value = shape === 'buzz' ? rand(45, 70) : rand(16, 32);
+        depth.gain.value = f * (shape === 'buzz' ? 0.5 : 0.25);
+        lfo.connect(depth); depth.connect(osc.frequency);
+        lfo.start(t); lfo.stop(t + dur);
+      }
+      osc.connect(g); g.connect(out);
+      osc.start(t); osc.stop(t + dur + 0.02);
+      t += dur + rand(0.015, 0.07);
+    }
+    return t - start;
+  }
+
+  async function speakBeeps(moodName, n, token) {
+    const ac = audio();
+    if (ac.state !== 'running') await ac.resume();   // sinon l'horloge audio est figée et les bips partent en retard
+    if (token !== speechToken) return;
+    const bus = ac.createGain();
+    connectOut(ac, bus);
+    const mood = MOODS[moodName];
+    const dur = beepPhrase(ac, bus, mood, n ?? Math.round(rand(...mood.count)));
+    const me = { stop: () => bus.disconnect() };
+    playing = me;
+    S.speaking = true; S.audioLipSync = true;
+    await sleep(dur * 1000 + 60);
+    if (playing === me) { playing = null; S.audioLipSync = false; }
+  }
+
+  function beep(moodName) {
+    const mood = MOODS[moodName];
+    if (!mood || !S.power || S.screen !== 'face') return Promise.resolve();
+    const token = ++speechToken;
+    stopAudio();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    S.balloon = null;
+    if (mood.expr) setExpr(mood.expr, 2500);
+    log(`bips : ${mood.fr}`);
+    return speakBeeps(moodName, null, token).then(() => { if (token === speechToken) S.speaking = false; });
+  }
+
+  function speakWeb(text, token, done, fallback, name) {
+    if (!webVoices.length) return fallback();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = webVoices.find((x) => x.name === name) || webVoices[0];
+    u.voice = v; u.lang = v.lang;
+    u.pitch = 1.6; u.rate = 1.05;
+    let started = false;
+    u.onstart = () => { started = true; S.speaking = true; };
+    u.onboundary = () => { S.mouthTarget = rand(0.6, 1); };
+    u.onend = done;
+    u.onerror = () => { if (!started) fallback(); else done(); };
+    speechSynthesis.speak(u);
+    // Certains navigateurs ne lancent pas la voix sans clic préalable
+    setTimeout(() => { if (!started && token === speechToken) { speechSynthesis.cancel(); fallback(); } }, 1500);
+  }
+
+  let speechToken = 0;
+  function say(text, { expr, silent } = {}) {
+    if (!S.power || !text) return Promise.resolve();
+    const token = ++speechToken;
+    stopAudio();
+    S.audioLipSync = false;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    const now = performance.now() / 1000;
+    S.balloon = text; S.balloonSince = now; S.balloonUntil = Infinity;
+    if (expr) setExpr(expr, 4000);
+    log(`dit : « ${text} »`);
+    return new Promise((resolve) => {
+      const done = () => {
+        if (token !== speechToken) return resolve();
+        S.speaking = false;
+        S.balloonUntil = performance.now() / 1000 + 1.5;
+        resolve();
+      };
+      const fallback = () => {             // pas de voix : on anime juste la bouche
+        S.speaking = true;
+        setTimeout(done, 600 + text.length * 65);
+      };
+      const sel = voiceSel.value;
+      if (silent || !sel) return fallback();
+      if (sel.startsWith('beeps:')) {      // la bulle sert de sous-titre
+        const mood = { happy: 'happy', sad: 'sad', angry: 'angry', doubt: 'surprised' }[expr] || 'chatty';
+        return speakBeeps(mood, clamp(Math.round(text.length / 4), 3, 18), token).then(done);
+      }
+      if (!sel.startsWith('piper:')) return speakWeb(text, token, done, fallback, sel.slice(4));
+      speakPiper(text, sel, token).then(done, (err) => {
+        if (token !== speechToken) return resolve();
+        log(`Piper injoignable (${err.message}) : voix du navigateur`);
+        piperVoices = [];
+        renderVoices();
+        loadPiperVoices(5000);
+        speakWeb(text, token, done, fallback);
+      });
+    });
+  }
+
+  // --- Capteurs ---
+  let petSeq = [];
+  function touch(zone) {
+    if (!S.power || S.screen !== 'face') return;
+    const z = zones[zone];
+    z.classList.add('hit'); setTimeout(() => z.classList.remove('hit'), 250);
+    log(`toucher tête : ${zone}`);
+    const now = performance.now();
+    petSeq = petSeq.filter((p) => now - p.t < 1500).concat({ zone, t: now });
+    if (petSeq.map((p) => p.zone).join(',').endsWith('avant,milieu,arriere')) { pet(); petSeq = []; return; }
+    if (zone === 'avant') { S.gazeTY = -1; say('Oh ? Il y a quelque chose sur ma tête ?', { expr: 'doubt' }); }
+    if (zone === 'milieu') { flashLeds('#ff6b8b', 900); say('Hihi, ça fait du bien !', { expr: 'happy' }); }
+    if (zone === 'arriere') say('Hé, c\'est ma nuque !', { expr: 'angry' });
+  }
+  function pet() {
+    if (!S.power || S.screen !== 'face') return;
+    log('caresse détectée (avant → arrière)');
+    flashLeds('#ff9ecf', 2000);
+    S.tilt.target = clamp(S.tilt.cur + 10, 5, 85);
+    say('Ronron… j\'adore les caresses.', { expr: 'happy' });
+  }
+  function shake() {
+    if (!S.power || S.screen !== 'face') return;
+    log('IMU : secousse détectée');
+    S.shakeUntil = performance.now() / 1000 + 1.4;
+    say('Waaah, j\'ai la tête qui tourne !', { expr: 'doubt' });
+  }
+  function hand() {
+    if (!S.power || S.screen !== 'face') return;
+    log('capteur de proximité : objet proche');
+    look(0, 45); S.gazeTX = 0; S.gazeTY = 0;
+    flashLeds('#ffffff', 600);
+    say('Oh, une main ! Bonjour la main.', { expr: 'happy' });
+  }
+  function setLight(on) {
+    S.lightsOn = on;
+    stage.classList.toggle('night', !on);
+    rig.classList.toggle('night', !on);
+    log(`capteur de luminosité : ${on ? 'lumière' : 'obscurité'}`);
+    if (!S.power || S.screen !== 'face') return;
+    if (!on) setTimeout(() => { if (!S.lightsOn) { setExpr('sleepy'); say('Il fait nuit… bonne nuit.'); } }, 1500);
+    else { setExpr('neutral'); say('Ah, bonjour ! J\'ai bien dormi.'); }
+  }
+
+  // --- Notifications (relayées par un démon de notifications) ---
+  const ALERTES = { minuteur: 'Le minuteur a sonné !', sonnette: 'On sonne à la porte !' };
+  function notify({ alerte, couleur, intensite = 1 }) {
+    if (!S.power || S.screen !== 'face') return;
+    const now = performance.now() / 1000;
+    const discret = intensite < 0.5;           // intensité basse : pas de son
+    const texte = ALERTES[alerte] || `Notification ${alerte}`;
+    log(`notification : ${alerte}${discret ? ' (discret)' : ''}`);
+    flashLeds(/^[0-9a-f]{6}$/i.test(couleur || '') ? '#' + couleur : '#ffffff', 3000, true);
+    stopFollow();
+    look(0, 55);                                // se tourne vers toi, tête un peu levée
+    S.next.head = now + 8;
+    S.gazeTX = 0; S.gazeTY = -0.3;
+    if (discret) {
+      S.balloon = texte; S.balloonSince = now; S.balloonUntil = now + 6;
+      setExpr('doubt', 3000);
+      return;
+    }
+    beep('surprised').then(() => say(texte, { expr: 'happy' }));
+  }
+
+  let alertesConnectees = false;
+  if ('EventSource' in window) {
+    const flux = new EventSource(PIPER_URL + '/events');   // se reconnecte tout seul si le serveur redémarre
+    flux.onopen = () => { if (!alertesConnectees) { alertesConnectees = true; log('notifications : à l\'écoute'); } };
+    flux.onerror = () => { if (alertesConnectees) { alertesConnectees = false; log('notifications : serveur injoignable'); } };
+    flux.onmessage = (e) => { try { notify(JSON.parse(e.data)); } catch { /* message illisible : ignoré */ } };
+  }
+
+  // --- Démarrage ---
+  function boot() {
+    S.power = true; S.busy = false;
+    S.screen = 'boot'; S.screenSince = performance.now() / 1000;
+    S.balloon = null; S.speaking = false; S.mouth = 0;
+    setExpr('neutral');
+    $('btnPower').textContent = 'Éteindre';
+    log('démarrage…');
+    setTimeout(() => { if (S.power && S.screen === 'boot') { S.screen = 'start'; log('écran d\'accueil : appuyer sur Start'); } }, 1700);
+  }
+  async function servoTest() {
+    if (!S.power || S.busy) return;
+    S.busy = true;
+    log('test des servos');
+    S.balloon = 'Test des servos…'; S.balloonSince = performance.now() / 1000; S.balloonUntil = Infinity;
+    for (const [p, t] of [[-90, 45], [90, 45], [0, 45], [0, 10], [0, 80], [0, 45]]) {
+      await moveTo(p, t);
+      if (!S.power) return;
+      await sleep(150);
+    }
+    S.balloonUntil = 0;
+    S.busy = false;
+    log('test des servos : OK');
+  }
+  async function start() {
+    S.screen = 'face';
+    log('Start');
+    await servoTest();
+    if (!S.power) return;
+    await say('Bonjour ! Je suis Stack-chan. Installe l\'appli StackChan World pour me configurer.', { expr: 'happy' });
+  }
+  function powerOff() {
+    S.power = false; S.busy = false; S.speaking = false; S.balloon = null;
+    speechToken++;
+    stopAudio();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    $('btnPower').textContent = 'Allumer';
+    log('éteint');
+  }
+
+  async function demo() {
+    if (!S.power || S.screen !== 'face' || S.busy) return;
+    S.busy = true;
+    const prevMode = S.led.mode;
+    S.led.mode = 'arcenciel';
+    await say('Regarde tout ce que je sais faire !', { expr: 'happy' });
+    for (const [p, t, e] of [[-60, 55, 'happy'], [60, 55, 'doubt'], [0, 80, 'happy'], [0, 15, 'sad'], [0, 45, 'angry'], [0, 45, 'sleepy']]) {
+      setExpr(e, 900);
+      await moveTo(p, t);
+      await sleep(350);
+      if (!S.power) { S.busy = false; return; }
+    }
+    S.shakeUntil = performance.now() / 1000 + 0.8;
+    await sleep(800);
+    S.led.mode = prevMode;
+    S.busy = false;
+    await say('Ta-da !', { expr: 'happy' });
+  }
+
+  // ---------- Boucle principale ----------
+  let last = performance.now();
+  function frame(nowMs) {
+    const t = nowMs / 1000;
+    const dt = Math.min(0.05, (nowMs - last) / 1000);
+    last = nowMs;
+
+    // Servos : vitesse max + ralentissement en fin de course
+    if (S.power) {
+      for (const s of [S.pan, S.tilt]) {
+        const d = s.target - s.cur, ad = Math.abs(d);
+        if (ad < 0.05) s.cur = s.target;
+        else s.cur += Math.sign(d) * Math.min(ad, S.speed * Math.min(1, ad / 15 + 0.15) * dt);
+      }
+      if (Math.abs(S.pan.target - S.pan.cur) < 0.5 && Math.abs(S.tilt.target - S.tilt.cur) < 0.5) {
+        while (servoWaiters.length) servoWaiters.shift()();
+      }
+    }
+
+    if (S.exprUntil && t > S.exprUntil) { S.expr = S.baseExpr; S.exprUntil = 0; }
+    if (S.balloon && t > S.balloonUntil) S.balloon = null;
+
+    const awake = S.power && S.screen === 'face';
+    if (awake) {
+      if (t > S.next.blink && S.expr !== 'happy') { S.blinkStart = t; S.next.blink = t + rand(2.5, 6); }
+      if (S.follow) {
+        S.gazeTX = clamp((S.pan.target - S.pan.cur) / 25, -1, 1);
+        S.gazeTY = clamp(-(S.tilt.target - S.tilt.cur) / 15, -1, 1);
+      } else if (S.alive && !S.busy) {
+        if (t > S.next.saccade) { S.gazeTX = rand(-0.8, 0.8); S.gazeTY = rand(-0.6, 0.6); S.next.saccade = t + rand(1, 4); }
+        if (t > S.next.head && !S.speaking) {
+          const big = Math.random() < 0.2;
+          look(rand(-1, 1) * (big ? 90 : 30), rand(big ? 20 : 35, big ? 75 : 58));
+          S.next.head = t + rand(4, 9);
+        }
+      }
+      if (t < S.shakeUntil) { S.gazeTX = Math.cos(t * 14); S.gazeTY = Math.sin(t * 14); }
+    }
+    S.gazeX += (S.gazeTX - S.gazeX) * Math.min(1, dt * 12);
+    S.gazeY += (S.gazeTY - S.gazeY) * Math.min(1, dt * 12);
+
+    // Bouche
+    if (S.speaking && S.audioLipSync) {
+      analyser.getFloatTimeDomainData(levels);
+      let sum = 0;
+      for (const x of levels) sum += x * x;
+      S.mouthTarget = clamp((Math.sqrt(sum / levels.length) - 0.01) * 5, 0, 1);
+    } else if (S.speaking) {
+      if (t > S.nextMouth) { S.mouthTarget = Math.random() < 0.18 ? 0 : rand(0.15, 1); S.nextMouth = t + rand(0.07, 0.13); }
+    } else S.mouthTarget = 0;
+    S.mouth += (S.mouthTarget - S.mouth) * Math.min(1, dt * 22);
+
+    // Pose de la tête
+    let wobble = 0;
+    if (t < S.shakeUntil) wobble = Math.sin(t * 28) * 10 * (S.shakeUntil - t);
+    panNode.style.transform = `translateY(110px) rotateY(${S.pan.cur + wobble}deg)`;
+    tiltNode.style.transform = `translateY(-26px) rotateX(${S.tilt.cur - 45}deg)`;
+
+    drawScreen(t);
+    drawLeds(t);
+    readouts();
+    requestAnimationFrame(frame);
+  }
+
+  function hexToRgb(h) {
+    const n = parseInt(h.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function drawLeds(t) {
+    const L = S.led;
+    for (let i = 0; i < 12; i++) {
+      let rgb = null, k = 1;
+      if (!S.power) rgb = null;
+      else if (L.flash && t < L.flashUntil) { if (!L.flashBlink || Math.floor(t * 4) % 2 === 0) rgb = hexToRgb(L.flash); }
+      else if (L.mode === 'off') rgb = null;
+      else if (L.mode === 'fixe') rgb = hexToRgb(L.color);
+      else if (L.mode === 'respiration') { rgb = hexToRgb(L.color); k = 0.2 + 0.8 * (0.5 + 0.5 * Math.sin(t * 2 * Math.PI / 3.5)); }
+      else if (L.mode === 'arcenciel') {
+        const hue = (i * 30 + t * 120) % 360;
+        const c = (1 - Math.abs(((hue / 60) % 2) - 1));
+        const seg = Math.floor(hue / 60);
+        rgb = [[1, c, 0], [c, 1, 0], [0, 1, c], [0, c, 1], [c, 0, 1], [1, 0, c]][seg].map((x) => x * 255);
+      } else if (L.mode === 'voix') { rgb = hexToRgb(L.color); k = S.speaking ? 0.15 + S.mouth : 0.08; }
+      const el = ledEls[i];
+      if (!rgb) { el.style.background = ''; el.style.boxShadow = ''; continue; }
+      k = clamp(k * L.bright, 0, 1);
+      const [r, g, b] = rgb.map((x) => Math.round(68 + (x - 68) * k));
+      el.style.background = `rgb(${r},${g},${b})`;
+      el.style.boxShadow = `0 0 ${4 + 16 * k}px ${2 + 4 * k}px rgba(${rgb.join(',')},${0.6 * k})`;
+    }
+  }
+
+  let lastReadout = '';
+  function readouts() {
+    const p = Math.round(S.pan.cur), ti = Math.round(S.tilt.cur);
+    const state = !S.power ? 'éteint' : S.screen === 'boot' ? 'démarrage…' : S.screen === 'start' ? 'en attente de Start'
+      : S.speaking ? 'parle' : S.busy ? 'occupé' : EXPR_FR[S.expr];
+    const key = `${p}|${ti}|${state}`;
+    if (key === lastReadout) return;
+    lastReadout = key;
+    $('panVal').textContent = p + '°';
+    $('tiltVal').textContent = ti + '°';
+    if (document.activeElement !== $('pan')) $('pan').value = Math.round(S.pan.target);
+    if (document.activeElement !== $('tilt')) $('tilt').value = Math.round(S.tilt.target);
+    $('stateVal').textContent = state;
+  }
+
+  // ---------- Interactions ----------
+  canvas.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (dragMoved || !S.power) return;
+    if (S.screen === 'start') start();
+    else if (S.screen === 'face') { log('toucher écran'); say('Hé, ça chatouille !', { expr: 'happy' }); }
+  });
+
+  let dragging = false, dragMoved = false, dragStart = null;
+  stage.addEventListener('pointerdown', (e) => {
+    dragging = true; dragMoved = false;
+    dragStart = { x: e.clientX, y: e.clientY, cx: S.cam.x, cy: S.cam.y };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (dragging) {
+      const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+      if (!dragMoved && Math.hypot(dx, dy) > 4) { dragMoved = true; stage.classList.add('dragging'); }
+      if (dragMoved) {
+        S.cam.y = dragStart.cy + dx * 0.4;
+        S.cam.x = clamp(dragStart.cx - dy * 0.3, -50, 20);
+        layout();
+      }
+      return;
+    }
+    if (S.follow && S.power && S.screen === 'face' && !S.busy) {
+      const r = stage.getBoundingClientRect();
+      const nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+      const ny = (e.clientY - (r.top + r.height * 0.38)) / (r.height / 2);
+      look(clamp(nx, -1.5, 1.5) * 75, 45 - clamp(ny, -1, 1) * 38);
+    }
+  });
+  window.addEventListener('pointerup', () => {
+    dragging = false; stage.classList.remove('dragging');
+    setTimeout(() => { dragMoved = false; }, 0);
+  });
+  stage.addEventListener('dblclick', () => { S.cam = { x: -12, y: -16 }; layout(); });
+
+  $('btnPower').addEventListener('click', () => (S.power ? powerOff() : boot()));
+  $('btnReboot').addEventListener('click', () => { powerOff(); setTimeout(boot, 400); });
+  $('btnDemo').addEventListener('click', demo);
+  for (const b of document.querySelectorAll('#exprRow button')) b.addEventListener('click', () => setExpr(b.dataset.expr));
+
+  const stopFollow = () => { if (S.follow) { S.follow = false; $('chkFollow').checked = false; } };
+  $('pan').addEventListener('input', (e) => { stopFollow(); look(+e.target.value, S.tilt.target); });
+  $('tilt').addEventListener('input', (e) => { stopFollow(); look(S.pan.target, +e.target.value); });
+  $('pan').addEventListener('change', () => log(`servo X → ${S.pan.target}°`));
+  $('tilt').addEventListener('change', () => log(`servo Y → ${S.tilt.target}°`));
+  $('speed').value = S.speed; $('speedVal').textContent = S.speed + '°/s';
+  $('speed').addEventListener('input', (e) => { S.speed = +e.target.value; $('speedVal').textContent = S.speed + '°/s'; savePrefs(); });
+  $('btnCenter').addEventListener('click', () => { stopFollow(); look(0, 45); log('centrer'); });
+  $('btnServoTest').addEventListener('click', () => { stopFollow(); servoTest(); });
+  $('chkFollow').addEventListener('change', (e) => { S.follow = e.target.checked; log(`suivi de la souris : ${S.follow ? 'oui' : 'non'}`); });
+  $('chkAlive').checked = S.alive;
+  $('chkAlive').addEventListener('change', (e) => { S.alive = e.target.checked; savePrefs(); log(`mode vivant : ${S.alive ? 'oui' : 'non'}`); });
+
+  const sayInput = $('sayInput');
+  $('btnSay').addEventListener('click', () => say(sayInput.value.trim()));
+  sayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') say(sayInput.value.trim()); });
+  // Curseurs de la voix Piper : [id, lecture, écriture, affichage]
+  const pct = (v) => Math.round(v * 100) + ' %';
+  const dec = (v) => v.toFixed(2).replace('.', ',');
+  const voiceSliders = [
+    ['vSpeed', () => S.piper.speed, (v) => { S.piper.speed = v; }, pct],
+    ['vNoise', () => S.piper.noise, (v) => { S.piper.noise = v; }, dec],
+    ['vNoiseW', () => S.piper.noiseW, (v) => { S.piper.noiseW = v; }, dec],
+    ['pitch', () => S.pitch, (v) => { S.pitch = v; }, pct],
+  ];
+  function showVoiceSliders() {
+    for (const [id, get, , fmt] of voiceSliders) {
+      $(id).value = Math.round(get() * 100);
+      $(id + 'Val').textContent = fmt(get());
+    }
+  }
+  for (const [id, , set, fmt] of voiceSliders) {
+    $(id).addEventListener('input', (e) => { const v = e.target.value / 100; set(v); $(id + 'Val').textContent = fmt(v); savePrefs(); });
+  }
+  showVoiceSliders();
+  $('btnVoiceTest').addEventListener('click', () => say('Voici ma voix avec ces réglages. Comment tu me trouves ?'));
+  $('btnVoiceReset').addEventListener('click', () => {
+    S.piper = { speed: 1, noise: 0.667, noiseW: 0.8 };
+    S.pitch = 1;
+    showVoiceSliders();
+    savePrefs();
+    log('voix : réglages par défaut');
+  });
+  for (const b of document.querySelectorAll('[data-beep]')) b.addEventListener('click', () => beep(b.dataset.beep));
+  $('chkSpeaker').checked = S.smallSpeaker;
+  $('chkSpeaker').addEventListener('change', (e) => { S.smallSpeaker = e.target.checked; savePrefs(); });
+  for (const b of document.querySelectorAll('[data-say]')) b.addEventListener('click', () => say(b.dataset.say));
+
+  $('ledMode').value = S.led.mode;
+  $('ledColor').value = S.led.color;
+  $('ledBright').value = Math.round(S.led.bright * 100);
+  $('ledBrightVal').textContent = Math.round(S.led.bright * 100) + ' %';
+  $('ledMode').addEventListener('change', (e) => { S.led.mode = e.target.value; savePrefs(); log(`LEDs : ${e.target.selectedOptions[0].text.toLowerCase()}`); });
+  $('ledColor').addEventListener('input', (e) => { S.led.color = e.target.value; savePrefs(); });
+  $('ledBright').addEventListener('input', (e) => { S.led.bright = e.target.value / 100; $('ledBrightVal').textContent = e.target.value + ' %'; savePrefs(); });
+
+  for (const b of document.querySelectorAll('[data-touch]')) b.addEventListener('click', () => touch(b.dataset.touch));
+  $('btnPet').addEventListener('click', pet);
+  $('btnShake').addEventListener('click', shake);
+  $('btnHand').addEventListener('click', hand);
+  $('chkLight').addEventListener('change', (e) => setLight(e.target.checked));
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, select, textarea')) return;
+    const step = 10;
+    const keys = {
+      ArrowLeft: () => look(S.pan.target - step, S.tilt.target),
+      ArrowRight: () => look(S.pan.target + step, S.tilt.target),
+      ArrowUp: () => look(S.pan.target, S.tilt.target + step),
+      ArrowDown: () => look(S.pan.target, S.tilt.target - step),
+    };
+    if (keys[e.key]) { stopFollow(); keys[e.key](); e.preventDefault(); return; }
+    const ex = ['neutral', 'happy', 'sleepy', 'doubt', 'sad', 'angry'][+e.key - 1];
+    if (ex) setExpr(ex);
+  });
+
+  // Petite API pour piloter le simulateur depuis la console
+  for (const b of document.querySelectorAll('[data-notif]')) b.addEventListener('click', () => {
+    const [alerte, couleur, intensite] = b.dataset.notif.split(':');
+    notify({ alerte, couleur, intensite: intensite ? +intensite : 1 });
+  });
+
+  window.stackchan = { say, beep, notify, expression: setExpr, look, moveTo, center: () => look(0, 45), servoTest, demo, shake, touch, pet, state: S,
+    leds: (mode, color) => { if (mode) S.led.mode = mode; if (color) S.led.color = color; } };
+
+  setExpr(S.baseExpr);
+  boot();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

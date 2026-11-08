@@ -1,0 +1,21 @@
+diff --git a/app.js b/app.js
+index e8340fb..8bf11e3 100644
+--- a/app.js
++++ b/app.js
+@@ -522,6 +522,16 @@ class MQTTConnection {
+                 type: 'mcp',
+                 payload: { jsonrpc: '2.0', id, result: this.mcpCachedInitialize }
+             });
++            // Billy : la réponse en cache ne transmettait pas au robot l'adresse et le jeton de
++            // l'analyse d'image (capabilities.vision) que le serveur envoie à chaque session.
++            const vision = params && params.capabilities && params.capabilities.vision;
++            if (vision) {
++                this.sendMcpRequest('initialize', {
++                    protocolVersion: params.protocolVersion || '2024-11-05',
++                    capabilities: { vision },
++                    clientInfo: params.clientInfo || { name: 'xiaozhi-mqtt-client', version: '1.0.0' }
++                }).catch(() => {});
++            }
+         } else if (method === 'tools/list') {
+             this.bridge.sendJson({
+                 type: 'mcp',

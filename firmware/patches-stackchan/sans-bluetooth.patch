@@ -1,0 +1,164 @@
+diff --git a/firmware/main/hal/utils/bleprph/bleprph.c b/firmware/main/hal/utils/bleprph/bleprph.c
+index 1ae1398..42c8850 100644
+--- a/firmware/main/hal/utils/bleprph/bleprph.c
++++ b/firmware/main/hal/utils/bleprph/bleprph.c
+@@ -1,3 +1,5 @@
++#include "sdkconfig.h"
++#if CONFIG_BT_ENABLED  // Billy : module compilé seulement avec le Bluetooth
+ /*
+  * Licensed to the Apache Software Foundation (ASF) under one
+  * or more contributor license agreements.  See the NOTICE file
+@@ -717,3 +719,4 @@ void ble_prph_init(bool use_alt_uuid)
+     }
+ #endif
+ }
++#endif  // CONFIG_BT_ENABLED
+diff --git a/firmware/main/hal/utils/bleprph/bleprph.h b/firmware/main/hal/utils/bleprph/bleprph.h
+index 8a14ef9..bc8f61a 100644
+--- a/firmware/main/hal/utils/bleprph/bleprph.h
++++ b/firmware/main/hal/utils/bleprph/bleprph.h
+@@ -21,9 +21,13 @@
+ #define H_BLEPRPH_
+ 
+ #include <stdbool.h>
++#include <stdint.h>
++#include "sdkconfig.h"
++#if CONFIG_BT_ENABLED  // Billy : sans Bluetooth, pas d'en-têtes NimBLE
+ #include "nimble/ble.h"
+ #include "modlog/modlog.h"
+ #include "nimble_peripheral_utils/esp_peripheral.h"
++#endif
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+diff --git a/firmware/main/hal/utils/bleprph/bleprph_off.c b/firmware/main/hal/utils/bleprph/bleprph_off.c
+new file mode 100644
+index 0000000..4fe4d3a
+--- /dev/null
++++ b/firmware/main/hal/utils/bleprph/bleprph_off.c
+@@ -0,0 +1,77 @@
++/*
++ * Billy : remplace le module Bluetooth quand il est coupé (CONFIG_BT_ENABLED=n), pour rendre
++ * environ 23 Ko de RAM interne. Billy se comporte comme s'il n'était jamais connecté en
++ * Bluetooth : l'appli StackChan World ne peut plus le joindre (Avatar, Dance, réglage du Wi-Fi).
++ */
++#include "sdkconfig.h"
++#if !CONFIG_BT_ENABLED
++#include "bleprph.h"
++#include "esp_log.h"
++
++void stackchan_ble_register_callbacks(const stackchan_ble_callbacks_t *callbacks)
++{
++    (void)callbacks;
++}
++
++int stackchan_ble_notify_motion(const char *json_data, uint16_t len)
++{
++    (void)json_data;
++    (void)len;
++    return -1;
++}
++
++int stackchan_ble_notify_avatar(const char *json_data, uint16_t len)
++{
++    (void)json_data;
++    (void)len;
++    return -1;
++}
++
++int stackchan_ble_notify_config(const char *json_data, uint16_t len)
++{
++    (void)json_data;
++    (void)len;
++    return -1;
++}
++
++int stackchan_ble_notify_rgb(const char *json_data, uint16_t len)
++{
++    (void)json_data;
++    (void)len;
++    return -1;
++}
++
++int stackchan_ble_update_battery_level(uint8_t level)
++{
++    (void)level;
++    return -1;
++}
++
++void stackchan_ble_set_conn_handle(uint16_t conn_handle)
++{
++    (void)conn_handle;
++}
++
++bool stackchan_ble_is_connected(void)
++{
++    return false;
++}
++
++void gatt_svr_register_cb(struct ble_gatt_register_ctxt *ctxt, void *arg)
++{
++    (void)ctxt;
++    (void)arg;
++}
++
++int gatt_svr_init(bool use_alt_uuid)
++{
++    (void)use_alt_uuid;
++    return -1;
++}
++
++void ble_prph_init(bool use_alt_uuid)
++{
++    (void)use_alt_uuid;
++    ESP_LOGW("bleprph", "Bluetooth coupé dans ce firmware (Billy) : pas de serveur BLE");
++}
++#endif  // !CONFIG_BT_ENABLED
+diff --git a/firmware/main/hal/utils/bleprph/gatt_svr.c b/firmware/main/hal/utils/bleprph/gatt_svr.c
+index 60d2a36..243e18b 100644
+--- a/firmware/main/hal/utils/bleprph/gatt_svr.c
++++ b/firmware/main/hal/utils/bleprph/gatt_svr.c
+@@ -1,3 +1,5 @@
++#include "sdkconfig.h"
++#if CONFIG_BT_ENABLED  // Billy : module compilé seulement avec le Bluetooth
+ /*
+  * Licensed to the Apache Software Foundation (ASF) under one
+  * or more contributor license agreements.  See the NOTICE file
+@@ -481,3 +483,4 @@ bool stackchan_ble_is_connected(void)
+ {
+     return (g_conn_handle != BLE_HS_CONN_HANDLE_NONE);
+ }
++#endif  // CONFIG_BT_ENABLED
+diff --git a/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/misc.c b/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/misc.c
+index 1e99e25..5f828ad 100644
+--- a/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/misc.c
++++ b/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/misc.c
+@@ -1,3 +1,5 @@
++#include "sdkconfig.h"
++#if CONFIG_BT_ENABLED  // Billy : module compilé seulement avec le Bluetooth
+ /*
+  * SPDX-FileCopyrightText: 2021-2023 Espressif Systems (Shanghai) CO LTD
+  *
+@@ -53,4 +55,5 @@ void print_mbuf(const struct os_mbuf *om)
+         }
+         om = SLIST_NEXT(om, om_next);
+     }
+-}
+\ No newline at end of file
++}
++#endif  // CONFIG_BT_ENABLED
+diff --git a/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/scli.c b/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/scli.c
+index e94835a..f2d8edc 100644
+--- a/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/scli.c
++++ b/firmware/main/hal/utils/bleprph/nimble_peripheral_utils/scli.c
+@@ -1,3 +1,5 @@
++#include "sdkconfig.h"
++#if CONFIG_BT_ENABLED  // Billy : module compilé seulement avec le Bluetooth
+ /*
+  * SPDX-FileCopyrightText: 2021-2025 Espressif Systems (Shanghai) CO LTD
+  *
+@@ -190,3 +192,4 @@ int scli_deinit(void)
+ 
+     return ESP_OK;
+ }
++#endif  // CONFIG_BT_ENABLED

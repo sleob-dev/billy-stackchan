@@ -1,0 +1,15 @@
+diff --git a/main/xiaozhi-server/core/connection.py b/main/xiaozhi-server/core/connection.py
+index 62d8fff..ef78bf1 100644
+--- a/main/xiaozhi-server/core/connection.py
++++ b/main/xiaozhi-server/core/connection.py
+@@ -1820,7 +1820,9 @@ class ConnectionHandler:
+             cleaned.append(line)
+         result = '\n'.join(cleaned)
+         # 清理末尾残留的 JSON 闭合符号
+-        result = re.sub(r'["\'}\]]+$', '', result.rstrip()).rstrip()
++        # Billy : on ne retire qu'une fin contenant } ou ], en gardant les espaces et apostrophes
++        # de fin de morceau, sinon les mots se collent en français (« très » + « bien »).
++        result = re.sub(r'\s*["\']*[}\]]["\'}\]]*\s*$', '', result)
+         return result
+ 
+     def _merge_tool_calls(self, tool_calls_list, tools_call):

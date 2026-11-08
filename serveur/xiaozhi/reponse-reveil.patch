@@ -1,0 +1,76 @@
+diff --git a/main/xiaozhi-server/core/handle/textHandler/listenMessageHandler.py b/main/xiaozhi-server/core/handle/textHandler/listenMessageHandler.py
+index 545ccec..2711642 100644
+--- a/main/xiaozhi-server/core/handle/textHandler/listenMessageHandler.py
++++ b/main/xiaozhi-server/core/handle/textHandler/listenMessageHandler.py
+@@ -15,9 +15,58 @@ from core.handle.textMessageHandler import TextMessageHandler
+ from core.handle.textMessageType import TextMessageType
+ from core.utils.util import remove_punctuation_and_length
+ from core.providers.tts.dto.dto import ContentType, TTSMessageDTO, SentenceType
++import hashlib
++import json
++import os
++import shutil
++from core.handle.sendAudioHandle import sendAudioMessage
++from core.utils.util import audio_to_data, opus_datas_to_wav_bytes
+ 
+ 
+ TAG = __name__
++DOSSIER_REVEIL = "data/reveil"
++
++
++async def jouer_reponse_reveil(conn: "ConnectionHandler", texte: str) -> bool:
++    """Billy : répond tout de suite au mot d'éveil par une phrase fixe (« Oui <prénom> ? »).
++
++    La phrase est dite une fois par le TTS (même voix et mêmes réglages que les réponses), puis
++    gardée en cache dans data/reveil/ ; le nom du fichier dépend du texte et des réglages TTS.
++    """
++    try:
++        selection = conn.config.get("selected_module", {}).get("TTS", "")
++        reglages = json.dumps(conn.config.get("TTS", {}).get(selection, {}), sort_keys=True, default=str)
++        cle = hashlib.md5((texte + "|" + reglages).encode()).hexdigest()
++        chemin = os.path.join(DOSSIER_REVEIL, f"{cle}.wav")
++        if not os.path.exists(chemin):
++            os.makedirs(DOSSIER_REVEIL, exist_ok=True)
++            resultat = await asyncio.to_thread(conn.tts.to_tts, texte)
++            if not resultat:
++                return False
++            if isinstance(resultat, str):
++                shutil.copyfile(resultat, chemin)
++            else:
++                with open(chemin, "wb") as f:
++                    f.write(opus_datas_to_wav_bytes(resultat, sample_rate=conn.sample_rate))
++        trames = await audio_to_data(chemin, use_cache=True)
++        if not trames:
++            return False
++        conn.client_abort = False
++        conn.sentence_id = uuid.uuid4().hex
++        # « tts start » partira avec le premier son (levres-au-son.patch)
++        conn.tts_start_en_attente = True
++        conn.tts_start_attente_depuis = time.monotonic()
++        conn.client_is_speaking = True
++        conn.dialogue.put(Message(role="assistant", content=texte))
++        conn.logger.bind(tag=TAG).info(f"Réponse au mot d'éveil : {texte}")
++        await sendAudioMessage(conn, SentenceType.FIRST, trames, texte)
++        # Le « stop » attend la fin du son : dans une tâche, pour ne pas bloquer la réception
++        asyncio.create_task(sendAudioMessage(conn, SentenceType.LAST, [], None))
++        return True
++    except Exception as e:
++        conn.logger.bind(tag=TAG).error(f"Réponse au mot d'éveil impossible : {e!r}")
++        return False
++
+ 
+ class ListenTextMessageHandler(TextMessageHandler):
+     """Listen消息处理器"""
+@@ -103,6 +152,12 @@ class ListenTextMessageHandler(TextMessageHandler):
+                     await send_stt_message(conn, original_text)
+                     await send_tts_message(conn, "stop", None)
+                     conn.client_is_speaking = False
++                elif is_wakeup_words and conn.config.get("reponse_reveil") and conn.tts:
++                    # Billy : « Oui <prénom> ? » tout de suite, sans attendre le LLM
++                    conn.just_woken_up = True
++                    if not await jouer_reponse_reveil(conn, conn.config["reponse_reveil"]):
++                        enqueue_asr_report(conn, "嘿，你好呀", [])
++                        await startToChat(conn, "嘿，你好呀")
+                 elif is_wakeup_words:
+                     conn.just_woken_up = True
+                     # 上报纯文字数据（复用ASR上报功能，但不提供音频数据）

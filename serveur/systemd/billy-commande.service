@@ -1,0 +1,16 @@
+[Unit]
+Description=Billy : télécommande pour le réseau local (:5006)
+After=network-online.target billy-mqtt.service billy-piper.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/billy/commande
+EnvironmentFile=/opt/billy/billy.env
+# BILLY_COMMANDE_JETON_SHA256 : empreinte SHA-256 du jeton (le jeton reste chez le client)
+EnvironmentFile=/opt/billy/commande/commande.env
+ExecStart=/opt/billy/venv-voix/bin/python serveur.py --port 5006 --public http://${BILLY_SERVEUR}:5006
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

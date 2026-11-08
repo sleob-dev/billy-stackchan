@@ -1,0 +1,16 @@
+[Unit]
+Description=Billy : passerelle MQTT+UDP vers XiaoZhi (MQTT :1883, UDP :8884, API 127.0.0.1:8885)
+After=network-online.target billy-xiaozhi.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/billy/mqtt-gateway
+EnvironmentFile=/opt/billy/billy.env
+Environment=MQTT_PORT=1883 UDP_PORT=8884 BILLY_API_PORT=8885
+# PUBLIC_IP : adresse que le robot utilise pour l'UDP (celle du serveur)
+ExecStart=/usr/bin/env PUBLIC_IP=${BILLY_SERVEUR} /usr/bin/node app.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

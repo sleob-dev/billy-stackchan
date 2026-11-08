@@ -1,0 +1,14 @@
+diff --git a/main/xiaozhi-server/core/handle/sendAudioHandle.py b/main/xiaozhi-server/core/handle/sendAudioHandle.py
+index cdd9447..998de10 100644
+--- a/main/xiaozhi-server/core/handle/sendAudioHandle.py
++++ b/main/xiaozhi-server/core/handle/sendAudioHandle.py
+@@ -286,6 +286,9 @@ async def send_tts_message(conn: "ConnectionHandler", state, text=None):
+     message = {"type": "tts", "state": state, "session_id": conn.session_id}
+     if text is not None:
+         message["text"] = textUtils.check_emoji(text)
++        # Billy : « afficher_texte: false » garde la voix mais n'affiche plus les phrases.
++        if state == "sentence_start" and not conn.config.get("afficher_texte", True):
++            message["text"] = ""
+ 
+     # TTS播放结束
+     if state == "stop":
